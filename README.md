@@ -17,8 +17,9 @@ No auth, database, voice connection, memory, or analytics yet.
 
 ## Compatibility decisions (locked for this milestone)
 
-- **Mobile:** Expo SDK `54.0.37` + React Native `0.81.4` + React `19.1.0` +
-  expo-router `6.0.24`. Chosen because SDK 54 is a mature release line that
+- **Mobile:** Expo SDK `54.0.37` + React Native `0.81.5` + React `19.1.0` +
+  expo-router `6.0.24` + babel-preset-expo `~54.0.10` (all aligned by
+  `npx expo install --fix`; `npx expo-doctor` passes 18/18). Chosen because SDK 54 is a mature release line that
   targets Android API 36, is the last line with an Old-Architecture fallback,
   and post-dates the Jan-2026 LiveKit fix confirming New-Architecture
   interop support. LiveKit React Native SDK (`@livekit/react-native` 2.x/3.x
@@ -34,11 +35,13 @@ No auth, database, voice connection, memory, or analytics yet.
   voice milestone.
 - **Android toolchain mapping (for the chosen SDK 54 / RN 0.81 line):**
   compileSdk 36, targetSdk 36, Android Gradle Plugin 8.x (requires JDK 17),
-  Gradle 8.10+, Node 20.19+ (we use 22.13.0). Android Studio ships its own
-  bundled JDK for the IDE; command-line Gradle builds use `JAVA_HOME` (must
-  be 17+, NOT the Java 8 currently on this machine). Exact versions are
-  confirmed at install time by `npx expo-doctor` and the generated
-  `android/` project (created only when prebuilding).
+  Gradle 8.10+, Node 20.19+ (we use 22.13.0). Android Studio ships a bundled
+  JDK (its `jbr/` directory) that can run Gradle as well as the IDE: select
+  it in Studio under Settings > Build Tools > Gradle, or point `JAVA_HOME`
+  / `org.gradle.java.home` at it for command-line builds. Either way the
+  JDK running Gradle must be 17+ (NOT the Java 8 currently on this machine).
+  Exact versions are confirmed at install time by `npx expo-doctor` and the
+  generated `android/` project (created only when prebuilding).
 - **Celery workers:** will need a supported Linux environment later
   (matching production). Not configured here — no Celery, Redis, Docker,
   or WSL in this milestone by design.

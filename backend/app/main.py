@@ -8,11 +8,28 @@ import platform
 import sys
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 APP_NAME = "voice-thinking-partner-api"
 APP_VERSION = "0.0.1-foundation"
 
+# Local web-preview origins only (Expo `npx expo start --web` defaults).
+# Phone/dev-build traffic goes through the FastAPI host directly, not a
+# browser, so no wildcard is used here.
+LOCAL_PREVIEW_ORIGINS = [
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://localhost:19006",
+    "http://127.0.0.1:19006",
+]
+
 app = FastAPI(title=APP_NAME, version=APP_VERSION)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=LOCAL_PREVIEW_ORIGINS,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")

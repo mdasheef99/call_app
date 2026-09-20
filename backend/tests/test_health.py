@@ -27,3 +27,9 @@ def test_status_reports_foundation_scope():
     assert body["auth_enabled"] is False
     assert "server_time_utc" in body
     assert "python" in body
+
+
+def test_health_allows_local_web_preview_origin():
+    resp = client.get("/health", headers={"Origin": "http://localhost:8081"})
+    assert resp.status_code == 200
+    assert resp.headers["access-control-allow-origin"] == "http://localhost:8081"
