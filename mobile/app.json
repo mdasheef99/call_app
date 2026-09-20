@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Call App (foundation)",
+    "slug": "call-app-foundation",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "scheme": "callapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "android": {
+      "package": "com.callapp.foundation",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    }
+  }
+}
