@@ -49,3 +49,12 @@ checks passed, (3) Android build completed, (4) physical-device tested.
 Mark anything not performed as UNTESTED. Never claim a device or integration
 works unless actually tested. Keep responses short; file paths as
 `path:line`. No emojis in files.
+
+## Process safety
+
+- Never terminate processes by broad executable name (`python.exe`,
+  `node.exe`, or similar). Stop only processes started for the current task,
+  after verifying ownership using the recorded PID and available
+  command/start-time information (e.g. `Get-Process -Id <pid>`).
+- Preserve all unrelated applications and servers; leave other ports and
+  work (e.g. Bookconnect on port 8082) untouched.

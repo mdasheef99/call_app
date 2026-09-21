@@ -1,9 +1,26 @@
-# HANDOFF — foundation review checkpoint
+# HANDOFF — foundation correction checkpoint
 
-Date: 2026-09-20. Local branch: `master` (`96e2a1e` + uncommitted review fixes).
-Remote: `origin/main` (`c8930e1`, README only). No merge, no push yet.
+Date: 2026-09-21. Base code revision: `master` `9167a74` (origin/main
+`c8930e1`, README only; histories unrelated). This correction round is
+uncommitted on top of `9167a74`; code changes are limited to 2 new CORS
+regression tests and lockfile BOM removal, plus doc/env-template fixes.
+No merge, no push yet.
 
-## Completed work
+## Completed work (this round, on top of the foundation)
+
+- `AGENTS.md`: durable process-safety rule (never kill by broad exe name;
+  stop only own PIDs after ownership check; preserve unrelated servers).
+- `backend/tests/test_health.py`: kept the allowed-origin test; added
+  unlisted-origin (no ACAO header) and POST-preflight-rejected (400,
+  GET-only) tests. CORS documented as preview policy, not authentication.
+- `backend/requirements.lock`: removed UTF-8 BOM (entries unchanged, LF).
+- `.env.example`: removed unconsumed `BACKEND_HOST`/`BACKEND_PORT`;
+  documents `mobile/.env` location and explicit uvicorn CLI flags.
+- `README.md`: phone command now invokes `.\backend\.venv\Scripts\python.exe
+  -m uvicorn` from the repo root; local (`127.0.0.1`) vs LAN (`0.0.0.0`)
+  kept separate; verification section reconciled (see below).
+
+## Completed work (foundation, prior round)
 
 - Minimal Expo SDK 54.0.37 / RN 0.81.5 / React 19.1.0 / expo-router 6.0.24 app
   with one Home screen; web preview supported; native-only code isolated in
@@ -20,14 +37,29 @@ Remote: `origin/main` (`c8930e1`, README only). No merge, no push yet.
 
 ## Verification evidence
 
-- `pytest backend/tests -q`: 3 passed (also reproduced in a fresh venv from
-  committed instructions only; freeze identical; temp env removed).
+Checks rerun in this correction round (working tree on top of `9167a74`):
+
+- `pytest backend/tests -q`: 5 passed (3 existing + 2 new CORS tests).
 - `npx tsc --noEmit`: exit 0. `npx expo-doctor`: 18/18.
+- `npx expo export --platform web` to disposable Temp output: 3 static
+  routes (`/`, `/_sitemap`, `/+not-found`); repo tree unpolluted.
+- Phone-style startup verified with the documented venv command on unused
+  port 18080 (`GET /health` returned `{"status":"ok",...}`); only the
+  started PID was stopped.
+
+Earlier implementation evidence (2026-09-20, not rerun here):
+
+- `pytest` 3 passed in a fresh venv from committed instructions; freeze
+  identical; temp env removed.
 - `npx expo export --platform web`: 3 static routes.
 - Playwright browser inspection of `http://localhost:8081/` (backend live):
   Home renders, `Backend: ok (0.0.1-foundation)`, button toggles to
   `End simulated call` / `SIMULATED CALL ACTIVE (UI state only)`,
   0 console errors (1 framework `pointerEvents` deprecation warning).
+
+Independent reviewers' checks at `9167a74` (review-only runs, not a
+substitute for the checks above): pytest 3 passed, `tsc` exit 0,
+`expo-doctor` 18/18, live health-check ok.
 
 ## Untested
 
@@ -46,8 +78,17 @@ Remote: `origin/main` (`c8930e1`, README only). No merge, no push yet.
   disabled in opencode config. No migrations run or planned this milestone.
 - OpenCode version on record: 1.14.33. No global permission changes made.
 
-## Next action
+## Next action — publication procedure (document only, do not execute here)
 
-Owner approves the review-branch procedure (merge `master` onto `main` via a
-`review/foundation` branch, resolve README deliberately, push branch only),
-then pilot setup begins with EAS cloud development builds.
+1. Fetch and inspect `origin/main` (`git fetch origin`, `git log origin/main`,
+   `git ls-tree origin/main`); confirm whether histories are still unrelated.
+2. Preserve the local implementation branch (`master` at its committed SHA);
+   do not reset, amend, or rewrite it.
+3. Create `review/foundation` from `origin/main`.
+4. Merge the implementation branch into it, using
+   `--allow-unrelated-histories` if the histories are still unrelated.
+5. Resolve `README.md` by inspecting both contents (ours/theirs labels are
+   ambiguous for a full rewrite); keep the foundation README deliberately.
+6. Review the resulting diff and rerun the checks before any push.
+7. Push only the `review/foundation` branch and open a draft PR when the
+   owner authorizes it. Never force-push `main`.

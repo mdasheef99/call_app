@@ -33,3 +33,24 @@ def test_health_allows_local_web_preview_origin():
     resp = client.get("/health", headers={"Origin": "http://localhost:8081"})
     assert resp.status_code == 200
     assert resp.headers["access-control-allow-origin"] == "http://localhost:8081"
+
+
+def test_health_omits_cors_header_for_unlisted_origin():
+    # CORS is a browser preview policy, not authentication: the endpoint
+    # still responds, but no Access-Control-Allow-Origin header is sent,
+    # so browsers block the unlisted origin from reading the response.
+    resp = client.get("/health", headers={"Origin": "https://evil.example"})
+    assert resp.status_code == 200
+    assert "access-control-allow-origin" not in resp.headers
+
+
+def test_preflight_rejects_post_under_get_only_preview_policy():
+    resp = client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:8081",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert resp.status_code == 400
+    assert "POST" not in resp.headers.get("access-control-allow-methods", "")

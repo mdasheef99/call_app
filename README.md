@@ -69,7 +69,9 @@ npx tsc --noEmit
 npx expo start --web
 ```
 
-Copy `.env.example` to `.env` for local tweaks (never commit `.env`).
+Copy `.env.example` to `mobile/.env` for local tweaks (never commit `.env`).
+Backend host/port are passed explicitly as `uvicorn` CLI flags below;
+no backend environment variables are consumed in this milestone.
 
 ## How a physical phone reaches the local backend
 
@@ -79,8 +81,10 @@ allowing the port:
 
 1. On the computer: find the LAN IPv4 (PowerShell: `ipconfig`, look for
    `IPv4 Address`, e.g. `192.168.1.23`).
-2. Start the backend on all interfaces:
-   `uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000`.
+2. From the repository root, start the backend on all interfaces using the
+   project's Python environment:
+   `.\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000`.
+   (Local-only verification instead uses `--host 127.0.0.1`.)
 3. On the same Wi-Fi, set the phone's URL to
    `EXPO_PUBLIC_API_URL=http://192.168.1.23:8000` (your IP, not localhost).
 4. Verify from the phone browser first: `http://192.168.1.23:8000/health`
@@ -116,10 +120,20 @@ Expo Go will NOT work for native audio — development build only.
 
 ## Verification status (this milestone)
 
-- Browser UI opened and inspected: UNTESTED (web export/bundling check only
-  so far; interactive browser inspection pending).
-- Automated checks passed: YES — `pytest backend/tests` 2 passed;
-  `npx tsc --noEmit` exit 0; `npm install` 811 packages OK.
+Tested code revision: `9167a74` plus the uncommitted corrections in this
+round (CORS regression tests, lockfile BOM removal, doc fixes).
+
+- Checks rerun now: `pytest backend/tests` 5 passed;
+  `npx tsc --noEmit` exit 0; `npx expo-doctor` 18/18 (see HANDOFF for
+  dates and the web-export result).
+- Earlier implementation browser inspection (2026-09-20, backend live):
+  Home rendered, `Backend: ok (0.0.1-foundation)`, simulated-call toggle
+  worked, 0 console errors (1 framework `pointerEvents` deprecation
+  warning). Not rerun in this correction round.
+- Independent reviewers' checks at `9167a74`: pytest 3 passed, `tsc`
+  exit 0, `expo-doctor` 18/18, live `GET /health` returned
+  `{"status":"ok",...}` on an unused test port. Reviewer runs, not a
+  substitute for the checks above.
 - Android build completed: UNTESTED — blocked, no Android Studio/SDK/adb
   on this machine (by design in this milestone).
 - Physical-device behavior tested: UNTESTED — no device connected, no voice
