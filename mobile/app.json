@@ -7,7 +7,11 @@
     "scheme": "callapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
+    ],
     "experiments": {
       "typedRoutes": true
     },
@@ -17,6 +21,7 @@
     },
     "android": {
       "package": "com.callapp.foundation",
+      "blockedPermissions": ["android.permission.CAMERA"],
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       }

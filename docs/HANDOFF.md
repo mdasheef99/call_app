@@ -1,9 +1,44 @@
-# HANDOFF — review branch published, CI added locally
+# HANDOFF — Android development-build setup (uncommitted, for review)
 
-Date: 2026-09-21. Branch: `review/foundation`, published at `5a91ab9`
-(`git push -u origin review/foundation` done; no PR, `main` untouched).
-This round adds `.github/workflows/ci.yml` on top, unpushed; hosted
-Actions execution still pending. Earlier states kept below for the record.
+Date: 2026-09-21. Branch: `feature/android-development-build`, based at
+`origin/main` `5bfdaeb` (PR #1 merged). This round is uncommitted on top;
+it prepares local EAS development-build configuration only. No cloud
+build, login, linking, or voice work.
+
+## Completed work (this round)
+
+- Installed via `npx expo install` (no force, no upgrades):
+  `expo-dev-client ~6.0.21`, `livekit-client ^2.22.3`,
+  `@livekit/react-native ^2.12.0`,
+  `@livekit/react-native-expo-plugin ^1.0.2`,
+  `@livekit/react-native-webrtc ^144.2.0`,
+  `@config-plugins/react-native-webrtc 13.0.0` (pinned: latest 15.x needs
+  Expo >= 56, 14.x needs Expo ^55; 13.x needs Expo ^54 — verified from
+  peer metadata, not guessed).
+- `app.json`: LiveKit plugins added; package ID, router, New Architecture
+  preserved. Camera is excluded from v1, so `android.blockedPermissions`
+  is set to `["android.permission.CAMERA"]` (omission from
+  `android.permissions` alone was a no-op: the webrtc plugin re-adds
+  CAMERA at prebuild via `withWebRTC.js`). Introspect verifies the
+  documented interaction: CAMERA is gone from the resolved
+  `android.permissions` list, audio permissions (`RECORD_AUDIO`,
+  `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH`) are preserved, and the merged
+  manifest preview carries the CAMERA entry with `tools:node="remove"`.
+  That marker is a removal instruction, not proof of the final APK
+  manifest — merged-APK verification stays UNTESTED. No camera code
+  runs anywhere. Machina Node-engine mismatch (`machina@7.0.1` via
+  `livekit-client@2.22.3` requires Node `>=22.22`; this machine has
+  22.13.0) stays recorded as an unresolved compatibility risk for EAS
+  environment selection; no Node/dependency upgrades in this round.
+- `mobile/eas.json`: development profile only, no owner/project ID.
+- Verified: `expo install --check` clean, `expo-doctor` 18/18, `tsc`
+  exit 0, prebuild config resolves, web export 3 routes with native
+  excluded. Doctor count is current evidence, not a fixed target.
+- Independent review and focused correction verification (fresh session,
+  working tree inspected directly): prior findings closed, no new issues.
+  Android compilation, final APK manifest, and physical-device behavior
+  remain UNTESTED (see Untested below).
+- Prior rounds below are kept for the record.
 
 ## Completed work (this round, on top of the foundation)
 
