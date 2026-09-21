@@ -30,9 +30,10 @@ No auth, database, voice connection, memory, or analytics yet.
 - **Backend:** Python `3.13.1` kept. Verified with concrete evidence (not just
   a version check): `livekit-agents==1.2.12` installs and
   `import livekit.agents` succeeds inside the isolated `backend/.venv`.
-  Committed `backend/requirements.txt` stays foundation-only
-  (fastapi, uvicorn, pydantic, httpx, pytest); LiveKit stays out until the
-  voice milestone.
+  Committed `backend/requirements.txt` records the direct dependency pins
+  and stays foundation-only (fastapi, uvicorn, pydantic, httpx, pytest);
+  `backend/requirements.lock` is the fully pinned set used for installation
+  and CI. LiveKit stays out of both until the voice milestone.
 - **Android toolchain mapping (for the chosen SDK 54 / RN 0.81 line):**
   compileSdk 36, targetSdk 36, Android Gradle Plugin 8.x (requires JDK 17),
   Gradle 8.10+, Node 20.19+ (we use 22.13.0). Android Studio ships a bundled
