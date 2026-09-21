@@ -1,0 +1,7 @@
+# Foundation-only backend dependencies (no voice, DB, auth, or workers yet).
+# LiveKit agents are verified separately (see README) and NOT installed here.
+fastapi==0.115.12
+uvicorn==0.34.0
+pydantic==2.11.7
+httpx==0.28.1
+pytest==8.3.5

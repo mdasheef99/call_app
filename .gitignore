@@ -1,0 +1,52 @@
+# Node / Expo
+node_modules/
+.expo/
+.expo-shared/
+dist/
+dist-web/
+web-build/
+*.jks
+*.keystore
+
+# EAS
+.eas/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Env / secrets - never commit real secrets
+.env
+.env.local
+*.pem
+*.key
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Android (local builds generate these; SDK itself lives outside repo)
+local.properties
+*.apk
+*.aab
+android/build/
+mobile/android/build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Playwright MCP inspection artifacts (evidence only, never committed)
+.playwright-mcp/
