@@ -1,10 +1,9 @@
-# HANDOFF — review branch ready, not yet pushed
+# HANDOFF — review branch published, CI added locally
 
-Date: 2026-09-21. Branch: `review/foundation` (local only, tracks
-`origin/main`, not pushed). HEAD records the workflow-docs commit on top
-of merge `fa67dd2` (parents: `origin/main` `c8930e1` README-only +
-`master` `2af159e` foundation). `master` preserved untouched at `2af159e`.
-Earlier states below are kept for the record.
+Date: 2026-09-21. Branch: `review/foundation`, published at `5a91ab9`
+(`git push -u origin review/foundation` done; no PR, `main` untouched).
+This round adds `.github/workflows/ci.yml` on top, unpushed; hosted
+Actions execution still pending. Earlier states kept below for the record.
 
 ## Completed work (this round, on top of the foundation)
 
@@ -78,17 +77,12 @@ substitute for the checks above): pytest 3 passed, `tsc` exit 0,
   disabled in opencode config. No migrations run or planned this milestone.
 - OpenCode version on record: 1.14.33. No global permission changes made.
 
-## Next action — publication step (pending owner approval)
+## Next action — CI review (pending)
 
-1. Done locally: `review/foundation` created from `origin/main`, `master`
-   merged with `--allow-unrelated-histories`, README conflict resolved by
-   keeping the developed project README (verified byte-identical to
-   `master`'s), workflow docs committed separately (`f72b951`).
-2. Verification on the branch: both original commits are ancestors
-   (`c8930e1`, `2af159e`); diff vs `origin/main` is 29 files, +12307/-1
-   (the -1 is the old `# call_app` line); no conflict markers, secrets,
-   keys, or generated artifacts tracked; only `.env.example` (placeholders).
-   No test rerun: the merge adds no code beyond already-verified `master`.
-3. Pending: owner authorizes, then push ONLY the branch:
-   `git push -u origin review/foundation`, then open a draft PR.
-   Never force-push, never push `main`.
+1. Done: `review/foundation` pushed at `5a91ab9`. This round adds minimal
+   CI (`.github/workflows/ci.yml`: backend py3.13 + lockfile + pytest;
+   mobile node22 + `npm ci` + typecheck + web export), aligns README/AGENTS
+   install lines with the lockfile, fixes the stale test count (5).
+2. Pending: owner reviews the CI commit; push the branch again; open a
+   draft PR. Hosted Actions execution is unproven until it runs — a local
+   workflow file is not proof of green CI.

@@ -20,7 +20,7 @@ Do not edit the three specification files. Correct README/AGENTS/HANDOFF by edit
 ```powershell
 # backend
 python -m venv backend\.venv
-.\backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+.\backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.lock
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests -q
 .\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 # mobile (needs backend running for "Backend: ok")
@@ -29,7 +29,7 @@ npx expo start --web --port 8081   # manual check: http://localhost:8081/
 npx expo export --platform web --output-dir dist-web
 ```
 
-Results on record: pytest 3 passed; `tsc` exit 0; `expo-doctor` 18/18;
+Results on record: pytest 5 passed; `tsc` exit 0; `expo-doctor` 18/18;
 web export 3 static routes; Playwright browser inspection 0 console errors.
 LiveKit (`livekit-agents==1.2.12` imports on Python 3.13) is a separate
 experiment in `backend/.venv` only — NOT in requirements.

@@ -58,7 +58,7 @@ No auth, database, voice connection, memory, or analytics yet.
 ```powershell
 # 1) Backend — create env, install, test, run
 python -m venv backend\.venv
-& ".\backend\.venv\Scripts\python.exe" -m pip install -r backend\requirements.txt
+& ".\backend\.venv\Scripts\python.exe" -m pip install -r backend\requirements.lock
 & ".\backend\.venv\Scripts\python.exe" -m pytest backend\tests -q
 & ".\backend\.venv\Scripts\python.exe" -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 
