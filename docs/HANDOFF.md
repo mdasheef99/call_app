@@ -1,10 +1,10 @@
-# HANDOFF — foundation correction checkpoint
+# HANDOFF — review branch ready, not yet pushed
 
-Date: 2026-09-21. Base code revision: `master` `9167a74` (origin/main
-`c8930e1`, README only; histories unrelated). This correction round is
-uncommitted on top of `9167a74`; code changes are limited to 2 new CORS
-regression tests and lockfile BOM removal, plus doc/env-template fixes.
-No merge, no push yet.
+Date: 2026-09-21. Branch: `review/foundation` (local only, tracks
+`origin/main`, not pushed). HEAD records the workflow-docs commit on top
+of merge `fa67dd2` (parents: `origin/main` `c8930e1` README-only +
+`master` `2af159e` foundation). `master` preserved untouched at `2af159e`.
+Earlier states below are kept for the record.
 
 ## Completed work (this round, on top of the foundation)
 
@@ -78,17 +78,17 @@ substitute for the checks above): pytest 3 passed, `tsc` exit 0,
   disabled in opencode config. No migrations run or planned this milestone.
 - OpenCode version on record: 1.14.33. No global permission changes made.
 
-## Next action — publication procedure (document only, do not execute here)
+## Next action — publication step (pending owner approval)
 
-1. Fetch and inspect `origin/main` (`git fetch origin`, `git log origin/main`,
-   `git ls-tree origin/main`); confirm whether histories are still unrelated.
-2. Preserve the local implementation branch (`master` at its committed SHA);
-   do not reset, amend, or rewrite it.
-3. Create `review/foundation` from `origin/main`.
-4. Merge the implementation branch into it, using
-   `--allow-unrelated-histories` if the histories are still unrelated.
-5. Resolve `README.md` by inspecting both contents (ours/theirs labels are
-   ambiguous for a full rewrite); keep the foundation README deliberately.
-6. Review the resulting diff and rerun the checks before any push.
-7. Push only the `review/foundation` branch and open a draft PR when the
-   owner authorizes it. Never force-push `main`.
+1. Done locally: `review/foundation` created from `origin/main`, `master`
+   merged with `--allow-unrelated-histories`, README conflict resolved by
+   keeping the developed project README (verified byte-identical to
+   `master`'s), workflow docs committed separately (`f72b951`).
+2. Verification on the branch: both original commits are ancestors
+   (`c8930e1`, `2af159e`); diff vs `origin/main` is 29 files, +12307/-1
+   (the -1 is the old `# call_app` line); no conflict markers, secrets,
+   keys, or generated artifacts tracked; only `.env.example` (placeholders).
+   No test rerun: the merge adds no code beyond already-verified `master`.
+3. Pending: owner authorizes, then push ONLY the branch:
+   `git push -u origin review/foundation`, then open a draft PR.
+   Never force-push, never push `main`.
