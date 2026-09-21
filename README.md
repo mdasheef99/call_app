@@ -13,7 +13,14 @@ No auth, database, voice connection, memory, or analytics yet.
   The call button is SIMULATED UI state only — no microphone, no voice.
 - `backend/` — minimal FastAPI app with `GET /health` and `GET /v1/status`
   plus pytest endpoint tests. Isolated venv at `backend/.venv` (not committed).
+- `mobile/eas.json` — development profile only (`developmentClient: true`,
+  `distribution: internal`, Android APK). No EAS project ID linked yet;
+  account login, quota, cloud build, and phone verification are pending.
 - `.env.example` — local-only settings template, no secrets.
+- Native audio dependencies are installed for the voice spike
+  (`expo-dev-client`, `livekit-client`, `@livekit/react-native`,
+  `@livekit/react-native-webrtc` + Expo plugins) but never imported: the
+  call button stays SIMULATED and web preview still bundles without them.
 
 ## Compatibility decisions (locked for this milestone)
 
@@ -24,9 +31,11 @@ No auth, database, voice connection, memory, or analytics yet.
   and post-dates the Jan-2026 LiveKit fix confirming New-Architecture
   interop support. LiveKit React Native SDK (`@livekit/react-native` 2.x/3.x
   + `@livekit/react-native-webrtc` 144.x + `@livekit/react-native-expo-plugin`)
-  is documented for Expo development builds only — it is NOT installed in this
-  milestone and will be added behind `lib/voice.native.ts` when voice work
-  starts. Target is an Expo development build, NOT Expo Go.
+  is documented for Expo development builds only — its dependencies and
+  native build plugins are installed and configured in this milestone,
+  but application runtime code does not import or use LiveKit: the call
+  button stays SIMULATED and native/device behavior remains untested.
+  Target is an Expo development build, NOT Expo Go.
 - **Backend:** Python `3.13.1` kept. Verified with concrete evidence (not just
   a version check): `livekit-agents==1.2.12` installs and
   `import livekit.agents` succeeds inside the isolated `backend/.venv`.

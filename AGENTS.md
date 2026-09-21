@@ -1,10 +1,12 @@
 # AGENTS.md — working rules for this repo
 
-## Current milestone: foundation only
+## Current milestone: Android development-build setup
 
-Minimal Expo web-preview shell + FastAPI health endpoints. No auth, database,
-voice, memory, analytics, or new UI features. The call button is SIMULATED
-UI state and must stay labelled as such; never report it as functioning voice.
+Foundation (PR #1) is merged. Current work prepares a local EAS Android
+development-build configuration, including native LiveKit dependencies for
+the later voice spike — no cloud build, account linking, or working voice.
+The call button stays SIMULATED UI state; native LiveKit code must never be
+imported into shared/web code. No auth, database, memory, or analytics.
 
 ## Document precedence
 

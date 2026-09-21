@@ -1,0 +1,12 @@
+{
+  "$schema": "https://expo.dev/eas.json",
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    }
+  }
+}
