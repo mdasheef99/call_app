@@ -4,7 +4,9 @@
 
 Foundation (PR #1) is merged. Current work prepares a local EAS Android
 development-build configuration, including native LiveKit dependencies for
-the later voice spike — no cloud build, account linking, or working voice.
+the later voice spike — no working voice. The Expo project is linked
+(`@mdasheef/call-app-foundation`); one development build was submitted
+and failed, and every future build needs the owner's explicit approval.
 The call button stays SIMULATED UI state; native LiveKit code must never be
 imported into shared/web code. No auth, database, memory, or analytics.
 

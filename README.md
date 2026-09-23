@@ -14,8 +14,12 @@ No auth, database, voice connection, memory, or analytics yet.
 - `backend/` — minimal FastAPI app with `GET /health` and `GET /v1/status`
   plus pytest endpoint tests. Isolated venv at `backend/.venv` (not committed).
 - `mobile/eas.json` — development profile only (`developmentClient: true`,
-  `distribution: internal`, Android APK). No EAS project ID linked yet;
-  account login, quota, cloud build, and phone verification are pending.
+  `distribution: internal`, Android APK, cloud Node pin). Linked to
+  `@mdasheef/call-app-foundation` (owner `mdasheef`). One development
+  build was submitted and failed (Gradle `:livekit_react-native`
+  namespace mismatch; no APK); 1 Free-plan Android build consumed, $0
+  plan with no charge. Every future build needs the owner's separate
+  explicit approval. Phone verification is pending.
 - `.env.example` — local-only settings template, no secrets.
 - Native audio dependencies are installed for the voice spike
   (`expo-dev-client`, `livekit-client`, `@livekit/react-native`,
@@ -144,7 +148,8 @@ round (CORS regression tests, lockfile BOM removal, doc fixes).
   exit 0, `expo-doctor` 18/18, live `GET /health` returned
   `{"status":"ok",...}` on an unused test port. Reviewer runs, not a
   substitute for the checks above.
-- Android build completed: UNTESTED — blocked, no Android Studio/SDK/adb
-  on this machine (by design in this milestone).
+- Android build completed: UNTESTED — no local Android Studio/SDK/adb
+  on this machine (by design); the one EAS cloud attempt errored with
+  no APK (see HANDOFF for build ID, diagnosis, and correction).
 - Physical-device behavior tested: UNTESTED — no device connected, no voice
   implemented (simulated UI states only, labelled as such).

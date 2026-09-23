@@ -4,6 +4,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "node": "22.23.2",
       "android": {
         "buildType": "apk"
       }

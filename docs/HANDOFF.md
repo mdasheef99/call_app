@@ -1,9 +1,100 @@
-# HANDOFF — Android development-build setup (uncommitted, for review)
+# HANDOFF — Android first-device-build (one build submitted and failed; correction pending review)
 
-Date: 2026-09-21. Branch: `feature/android-development-build`, based at
-`origin/main` `5bfdaeb` (PR #1 merged). This round is uncommitted on top;
-it prepares local EAS development-build configuration only. No cloud
-build, login, linking, or voice work.
+PR #2 merged at `15963c4` (main CI passed). This round works on
+`feature/android-first-device-build`, based at `origin/main` `15963c4`.
+One EAS Android development build was submitted and failed
+(`5957da33`, `:livekit_react-native:compileDebugKotlin` namespace
+mismatch); no APK was produced. The WebRTC correction (exact
+`144.1.2`) is applied and reviewed at source/config level only — it
+has not been compiled or device-tested. No second build is authorized;
+every future build needs the owner's separate explicit approval.
+Build allowance consumed: 1 Android build on the $0 Free plan (no
+charge implied or evidenced). No voice work. Pre-merge status below
+is historical.
+
+## EAS setup (this round, uncommitted)
+
+- Tooling: local Node `22.13.0`; `eas-cli@24.7.0` requires
+  `^20.18.3 || >=22.0.0` (satisfied; versioned `npx` invocation, no
+  global install). Cloud image default is Node `20.19.4` (official infra
+  docs); `machina@7.0.1` requires `>=22.22`.
+- Cloud pin: `mobile/eas.json` development profile sets exact
+  `"node": "22.23.2"` — latest Node 22 release verified in the official
+  release index (nodejs.org, 2026-07-28; SHASUMS index HTTP 200),
+  satisfying `>=22.22` on the Node 22 line. Supported by the documented
+  eas.json `node` profile field. No local Node or dependency changes.
+- Local (22.13.0) vs cloud (22.23.2): same major; cloud is minor/patch
+  ahead. Both satisfy eas-cli and Expo SDK 54 (`Node 20.19+`). Cloud
+  `npm install` should no longer raise the machina EBADENGINE warning;
+  local installs still warn (harmless, non-blocking — demonstrated).
+  Cross-version bundler drift is possible in principle; actual cloud
+  compatibility is proven only by the build itself (UNTESTED).
+- Expo identity: `whoami` → `mdasheef` (verified post-login; credentials
+  never in chat). Project **created** (status `created`, not linked —
+  no duplicate): `@mdasheef/call-app-foundation`, ID
+  `4104833e-c58d-48b7-91b2-9bbbd373875d`,
+  https://expo.dev/accounts/mdasheef/projects/call-app-foundation.
+  Slug and Android package preserved. Allowance verified from owner
+  dashboard screenshots: Free plan ($0/month), 15 Android + 15 iOS
+  builds; usage was 0/30 at setup, then 1 Android build consumed by
+  `5957da33` (failed, no APK; $0 plan — no charge implied or evidenced).
+- `project:init` rewrote `app.json` beyond linkage: it materialized the
+  webrtc plugin's 8 permissions into static `android.permissions`
+  (including CAMERA) and added `owner`/`extra.eas.projectId`.
+  Post-link introspect re-verified: `blockedPermissions` still strips
+  CAMERA from the resolved list, audio permissions preserved, manifest
+  preview still carries CAMERA with `tools:node="remove"`. Behavior
+  unchanged; final APK manifest still UNTESTED.
+- Preflight (Free-plan budget amendment, all local, zero builds
+  consumed — `build:list` returns `[]`): init rewrite inspected
+  (linkage + materialized perms only); `expo install --check` clean and
+  `expo-doctor` 18/18 re-run post-link; prebuild config resolves;
+  `build:inspect archive` shows upload is 60 files / 0.7 MB with no
+  `node_modules`, `dist-web`, `.env`, keystores, or secrets (only
+  `.env.example` template); local `expo prebuild --platform android`
+  generated a manifest with CAMERA `tools:node="remove"`, audio perms
+  present, `newArchEnabled=true`, `hermesEnabled=true`, namespace
+  `com.callapp.foundation` — generated `android/` removed and the
+  tool-added `ios` npm script reverted afterwards (tree verified clean
+  apart from the three intended files). `build:inspect pre-build`
+  gave inconsistent empty output (`Build failed` once, then silent);
+  not pursued further to protect the budget — recorded, non-blocking.
+- Build attempt (ONE authorized, Free plan): submitted
+  `5957da33-7fc0-4a8e-a1de-544e3b15242e` (created 2026-09-22T05:53:06Z,
+  development/Android). Keystore auto-provisioned in cloud, upload
+  296 KB, fingerprint computed. Status: **ERRORED** (completed
+  05:56:30Z, ~3.5 min) — failing phase **"Run gradlew"**, message
+  "Gradle build failed with unknown error", no artifacts. Phase logs
+  are dashboard-only:
+  https://expo.dev/accounts/mdasheef/projects/call-app-foundation/builds/5957da33-7fc0-4a8e-a1de-544e3b15242e#run-gradlew.
+  No retry/resubmit per budget amendment. Allowance consumed: 1 Android
+  build (was 0/30).
+- Diagnosis (read-only, via CLI `logFiles` reference; signed URL
+  redacted; Brotli payload decoded locally): failing task
+  `:livekit_react-native:compileDebugKotlin`, 18 errors, all
+  `org.webrtc` ↔ `livekit.org.webrtc` type mismatches (e.g.
+  `CustomVideoDecoderFactory.kt:50` expected `org.webrtc.VideoDecoder?`,
+  actual `livekit.org.webrtc.VideoDecoder?`). Root cause confirmed:
+  `144.2.0` depends on `io.github.webrtc-sdk:android-prefixed`
+  (relocated namespace) while `@livekit/react-native@2.12.0` Kotlin
+  imports unprefixed `org.webrtc.*`; published `144.1.2` tarball
+  verified to depend on unprefixed `io.github.webrtc-sdk:android`.
+- Correction (this round, uncommitted): `@livekit/react-native-webrtc`
+  pinned exact `144.1.2` (`mobile/package.json:17`); lockfile updated
+  by normal `npm install` (8-line diff, webrtc entry only).
+  `@livekit/react-native` stays `2.12.0`. Installed `144.1.2` verified:
+  gradle dep is unprefixed `android:144.7559.05`, no `livekit/` java
+  sources, proxies import `org.webrtc.*`. Peers satisfied (`^144.1.2`,
+  `livekit-client ^2.19.0` vs `2.22.3`; `npm ls` clean, single
+  versions). Checks: `install --check` clean, `expo-doctor` 18/18,
+  `tsc` exit 0, web export 3 routes, introspect shows owner/projectId,
+  block, audio perms, and CAMERA `tools:node="remove"` intact.
+  The namespace mismatch is addressed only insofar as inspection
+  proves alignment — native compilation and phone behavior remain
+  UNVERIFIED. No second build submitted.
+- Next action: focused review of this correction (uncommitted,
+  unpushed). Any second build needs the owner's separate explicit
+  approval after reviewing the exact candidate and evidence.
 
 ## Completed work (this round)
 
@@ -69,7 +160,11 @@ build, login, linking, or voice work.
 - LiveKit `1.2.12` import verified on Python 3.13 in `backend/.venv` only;
   not in committed requirements.
 
-## Verification evidence
+## Verification evidence (historical — foundation round at `9167a74`, not checks of `15963c4`)
+
+Current branch/base: `feature/android-first-device-build` at `15963c4`
+(`origin/main`). The paragraphs below record the foundation round on
+top of `9167a74` and are preserved unchanged as historical evidence.
 
 Checks rerun in this correction round (working tree on top of `9167a74`):
 
