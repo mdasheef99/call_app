@@ -1,4 +1,4 @@
-# HANDOFF — Android first-device-build (one build submitted and failed; correction pending review)
+# HANDOFF — Android first-device-build (build 9f539e50 FINISHED with APK; install/audio UNTESTED)
 
 PR #2 merged at `15963c4` (main CI passed). This round works on
 `feature/android-first-device-build`, based at `origin/main` `15963c4`.
@@ -95,6 +95,50 @@ is historical.
 - Next action: focused review of this correction (uncommitted,
   unpushed). Any second build needs the owner's separate explicit
   approval after reviewing the exact candidate and evidence.
+
+## LiveKit audio spike (reviewed; JS-only experiment — not working voice)
+
+- Branch `feature/livekit-audio-spike` from `0c0751c`. Native-only
+  audio test at `mobile/app/voice-test.tsx` (linked from Home):
+  tap Start → dev token minted on demand → mic permission →
+  `AudioSession` (communication preset) + `Room.connect` +
+  `setMicrophoneEnabled(true)`; states
+  idle/requesting/connecting/connected/reconnecting/denied/error/ended,
+  participant count, Mute/End; mic + session released on End, error,
+  screen exit, or genuine app background. Foreground-only: background
+  ends a live session; `inactive` (e.g. permission dialog) never does.
+  Audio-only: no camera/video/record/transcript/agent.
+  Credentials: NO static token. On-demand tokens via the installed
+  `livekit-client` `TokenSource.developmentTokenServer`, keyed by
+  gitignored `mobile/.env` `EXPO_PUBLIC_LIVEKIT_TOKEN_SERVER_ID`
+  (name only in `.env.example`, unset by default); tokens expire after
+  ~15 min and are never embedded in client JavaScript. The ID permits
+  unrestricted development token requests — dev-only, explicitly
+  excluded from pilot/production (which needs a backend token
+  endpoint). LiveKit imports exist only in `lib/voice.native.ts`;
+  orchestration lives in framework-free `lib/voice-session.ts`.
+- Evidence (code-level only): `tsc` exit 0; `voice-config` logic
+  checked in plain Node (missing/configured); focused Node-harness
+  checks with mocked LiveKit modules for Start→exit (pending start
+  disposed on completion), Start→End, and Mute-in-flight→End;
+  Android Hermes bundle 4.39 MB exit 0; web export 4 routes; web bundle
+  contains the screen in `unsupported`/`needs-config` form with zero
+  LiveKit SDK symbols; `git diff --check` clean. New files:
+  `app/voice-test.tsx`, `lib/voice-config.ts`, `lib/voice-session.ts`.
+- Build status (rechecked read-only via authenticated `eas-cli`
+  `build:list`; no signed URLs recorded): first build `5957da33`
+  ERRORED (no artifacts); later build `9f539e50` (commit `0c0751c`,
+  development profile) FINISHED with an APK artifact. This spike is
+  JS-only (no `package.json`/`app.json`/native change), so it loads
+  through Metro and does not itself require a new APK. Phone
+   installation, LiveKit Cloud connectivity, and two-way audio are
+   UNTESTED.
+- Focused recheck closed the cleanup-race and credential findings
+  against the actual diff plus untracked files (fresh mocked harness,
+  typecheck/web+android exports rerun). Item 5 (two-human diagnostic
+  support) is excluded by the owner and not implemented. Still
+  UNTESTED: user-to-AI integration, LiveKit Cloud connectivity from a
+  device, phone install, and real-microphone behavior.
 
 ## Completed work (this round)
 

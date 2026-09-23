@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Link } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import Constants from "expo-constants";
 import { getVoiceBackendStatus } from "../lib/voice";
@@ -59,6 +60,9 @@ export default function HomeScreen() {
           ? "SIMULATED UI ONLY — no microphone, no voice connection."
           : "SIMULATED CALL ACTIVE (UI state only) — no audio is sent or received."}
       </Text>
+      <Link href="/voice-test" style={styles.link}>
+        LiveKit audio test (development build only)
+      </Link>
     </View>
   );
 }
@@ -76,5 +80,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   buttonText: { color: "#fff", fontWeight: "600" },
+  link: { fontSize: 14, textDecorationLine: "underline" },
   warning: { fontSize: 12, opacity: 0.7 },
 });

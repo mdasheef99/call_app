@@ -9,3 +9,18 @@ export function getVoiceBackendStatus(): string {
 export function assertNoVoiceYet(): never {
   throw new Error("Voice is not available in the web preview.");
 }
+
+import type { VoiceTestHandle, VoiceTestStatus } from "./voice";
+
+export function getVoiceTestInitialStatus(): VoiceTestStatus {
+  return {
+    state: "unsupported",
+    muted: false,
+    participantCount: 0,
+    errorMessage: null,
+  };
+}
+
+export function startVoiceTest(): Promise<VoiceTestHandle> {
+  return Promise.reject(new Error("Voice test is not available in the web preview."));
+}
