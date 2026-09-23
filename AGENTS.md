@@ -5,8 +5,13 @@
 Foundation (PR #1) is merged. Current work prepares a local EAS Android
 development-build configuration, including native LiveKit dependencies for
 the later voice spike — no working voice. The Expo project is linked
-(`@mdasheef/call-app-foundation`); one development build was submitted
-and failed, and every future build needs the owner's explicit approval.
+(`@mdasheef/call-app-foundation`); WebRTC is pinned exact `144.1.2` and
+cloud Node is pinned `22.23.2`. Two EAS Android attempts are recorded:
+`5957da33` failed before the WebRTC correction; `9f539e50` finished with
+an APK for corrected source `0c0751c`. GitHub probe `35849621938` also
+assembled source `0c0751c`; its packaged APK had RECORD_AUDIO and no
+CAMERA. EAS artifact manifest, install, and audio remain UNTESTED, and
+every future build needs the owner's explicit approval.
 The call button stays SIMULATED UI state; native LiveKit code must never be
 imported into shared/web code. No auth, database, memory, or analytics.
 

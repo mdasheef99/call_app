@@ -1,18 +1,19 @@
-# HANDOFF — Android first-device-build (build 9f539e50 FINISHED with APK; install/audio UNTESTED)
+# HANDOFF — Android first-device-build (build 9f539e50 finished with APK; install/audio UNTESTED)
 
 PR #2 merged at `15963c4` (main CI passed). This round works on
 `feature/android-first-device-build`, based at `origin/main` `15963c4`.
-One EAS Android development build was submitted and failed
-(`5957da33`, `:livekit_react-native:compileDebugKotlin` namespace
-mismatch); no APK was produced. The WebRTC correction (exact
-`144.1.2`) is applied and reviewed at source/config level only — it
-has not been compiled or device-tested. No second build is authorized;
-every future build needs the owner's separate explicit approval.
-Build allowance consumed: 1 Android build on the $0 Free plan (no
-charge implied or evidenced). No voice work. Pre-merge status below
-is historical.
+WebRTC is pinned exact `144.1.2`; cloud Node is pinned `22.23.2`.
+Two EAS Android attempts are recorded: `5957da33` failed before the
+WebRTC correction (`:livekit_react-native:compileDebugKotlin` namespace
+mismatch; no APK); `9f539e50` finished with an APK for corrected source
+`0c0751c`. GitHub probe `35849621938` also assembled source `0c0751c`;
+its packaged APK had RECORD_AUDIO and no CAMERA. EAS artifact manifest,
+install, microphone, LiveKit connection, and user-to-AI conversation
+remain UNTESTED. Every future build needs the owner's separate explicit
+approval. CI `35844379073` is successful on `0c0751c`. No voice work.
+Pre-merge status below is historical.
 
-## EAS setup (this round, uncommitted)
+## EAS setup (this round)
 
 - Tooling: local Node `22.13.0`; `eas-cli@24.7.0` requires
   `^20.18.3 || >=22.0.0` (satisfied; versioned `npx` invocation, no
@@ -27,17 +28,18 @@ is historical.
   ahead. Both satisfy eas-cli and Expo SDK 54 (`Node 20.19+`). Cloud
   `npm install` should no longer raise the machina EBADENGINE warning;
   local installs still warn (harmless, non-blocking — demonstrated).
-  Cross-version bundler drift is possible in principle; actual cloud
-  compatibility is proven only by the build itself (UNTESTED).
+  Pre-build note: cross-version bundler drift was possible in principle;
+  cloud compatibility was then proven only by the build itself. The
+  reported `9f539e50` FINISHED execution is recorded above; EAS artifact
+  manifest remains UNTESTED.
 - Expo identity: `whoami` → `mdasheef` (verified post-login; credentials
   never in chat). Project **created** (status `created`, not linked —
   no duplicate): `@mdasheef/call-app-foundation`, ID
   `4104833e-c58d-48b7-91b2-9bbbd373875d`,
   https://expo.dev/accounts/mdasheef/projects/call-app-foundation.
-  Slug and Android package preserved. Allowance verified from owner
-  dashboard screenshots: Free plan ($0/month), 15 Android + 15 iOS
-  builds; usage was 0/30 at setup, then 1 Android build consumed by
-  `5957da33` (failed, no APK; $0 plan — no charge implied or evidenced).
+  Slug and Android package preserved. Two EAS Android attempts are
+  recorded (`5957da33` failed before the correction; `9f539e50` finished
+  for corrected source `0c0751c`; see build-attempt entries below).
 - `project:init` rewrote `app.json` beyond linkage: it materialized the
   webrtc plugin's 8 permissions into static `android.permissions`
   (including CAMERA) and added `owner`/`extra.eas.projectId`.
@@ -67,8 +69,11 @@ is historical.
   "Gradle build failed with unknown error", no artifacts. Phase logs
   are dashboard-only:
   https://expo.dev/accounts/mdasheef/projects/call-app-foundation/builds/5957da33-7fc0-4a8e-a1de-544e3b15242e#run-gradlew.
-  No retry/resubmit per budget amendment. Allowance consumed: 1 Android
-  build (was 0/30).
+  No retry/resubmit per budget amendment.
+- Build attempt (subsequent, reported): `9f539e50`
+  (commit `0c0751c`, development profile) FINISHED with an APK artifact
+  (reported via read-only `build:list`; no signed URLs recorded). EAS
+  artifact manifest, install, and audio UNTESTED.
 - Diagnosis (read-only, via CLI `logFiles` reference; signed URL
   redacted; Brotli payload decoded locally): failing task
   `:livekit_react-native:compileDebugKotlin`, 18 errors, all
@@ -79,7 +84,7 @@ is historical.
   (relocated namespace) while `@livekit/react-native@2.12.0` Kotlin
   imports unprefixed `org.webrtc.*`; published `144.1.2` tarball
   verified to depend on unprefixed `io.github.webrtc-sdk:android`.
-- Correction (this round, uncommitted): `@livekit/react-native-webrtc`
+- Correction (this round): `@livekit/react-native-webrtc`
   pinned exact `144.1.2` (`mobile/package.json:17`); lockfile updated
   by normal `npm install` (8-line diff, webrtc entry only).
   `@livekit/react-native` stays `2.12.0`. Installed `144.1.2` verified:
@@ -89,12 +94,17 @@ is historical.
   versions). Checks: `install --check` clean, `expo-doctor` 18/18,
   `tsc` exit 0, web export 3 routes, introspect shows owner/projectId,
   block, audio perms, and CAMERA `tools:node="remove"` intact.
-  The namespace mismatch is addressed only insofar as inspection
-  proves alignment — native compilation and phone behavior remain
-  UNVERIFIED. No second build submitted.
-- Next action: focused review of this correction (uncommitted,
-  unpushed). Any second build needs the owner's separate explicit
-  approval after reviewing the exact candidate and evidence.
+  The namespace mismatch is addressed by dependency alignment plus
+  compilation evidence below — EAS artifact manifest, install, and phone
+  behavior remain UNTESTED. Second build `9f539e50` reported finished
+  (see build-attempt entry).
+- Build verification: CI `35844379073` successful on `0c0751c`;
+  GitHub probe `35849621938` separately compiled the same source
+  (`:app:assembleDebug` BUILD SUCCESSFUL; packaged APK had RECORD_AUDIO
+  and no CAMERA). EAS artifact manifest was not inspected.
+- Next action: focused review of this correction. Every future build
+  needs the owner's separate explicit approval after reviewing the exact
+  candidate and evidence.
 
 ## LiveKit audio spike (reviewed; JS-only experiment — not working voice)
 
@@ -138,9 +148,10 @@ is historical.
   typecheck/web+android exports rerun). Item 5 (two-human diagnostic
   support) is excluded by the owner and not implemented. Still
   UNTESTED: user-to-AI integration, LiveKit Cloud connectivity from a
-  device, phone install, and real-microphone behavior.
+  device, phone install, and real-microphone behavior. Scope stays
+  one human talking to one AI; no two-human diagnostic.
 
-## Completed work (this round)
+## Completed work (historical — earlier install with `^144.2.0`)
 
 - Installed via `npx expo install` (no force, no upgrades):
   `expo-dev-client ~6.0.21`, `livekit-client ^2.22.3`,
@@ -175,7 +186,7 @@ is historical.
   remain UNTESTED (see Untested below).
 - Prior rounds below are kept for the record.
 
-## Completed work (this round, on top of the foundation)
+## Completed work (historical — on top of the foundation)
 
 - `AGENTS.md`: durable process-safety rule (never kill by broad exe name;
   stop only own PIDs after ownership check; preserve unrelated servers).
@@ -204,11 +215,13 @@ is historical.
 - LiveKit `1.2.12` import verified on Python 3.13 in `backend/.venv` only;
   not in committed requirements.
 
-## Verification evidence (historical — foundation round at `9167a74`, not checks of `15963c4`)
+## Verification evidence (historical — foundation round at `9167a74`; current CI for `0c0751c` above)
 
-Current branch/base: `feature/android-first-device-build` at `15963c4`
-(`origin/main`). The paragraphs below record the foundation round on
-top of `9167a74` and are preserved unchanged as historical evidence.
+CI `35844379073` is successful on `0c0751c`. Implementation revision
+tested: `0c0751c` on `feature/android-first-device-build`; base: `main`
+at `15963c4` (`origin/main`). The paragraphs below record the foundation
+round on top of `9167a74` and are preserved unchanged as historical
+evidence.
 
 Checks rerun in this correction round (working tree on top of `9167a74`):
 
@@ -234,10 +247,16 @@ Independent reviewers' checks at `9167a74` (review-only runs, not a
 substitute for the checks above): pytest 3 passed, `tsc` exit 0,
 `expo-doctor` 18/18, live health-check ok.
 
-## Untested
+## Untested (device/runtime; compilation is recorded above)
 
-- Android build: UNTESTED (no Studio/SDK/adb on this machine).
-- Physical device: UNTESTED (no device, no voice implemented).
+- Android build artifact: two EAS attempts are recorded (`5957da33`
+  failed before the WebRTC correction; `9f539e50` finished with an APK
+  for corrected source `0c0751c`); probe `35849621938` also assembled
+  source `0c0751c`. EAS artifact manifest UNTESTED; no local
+  Studio/SDK/adb on this machine.
+- Physical device: UNTESTED — no device connected, no voice implemented.
+  Installation, microphone/audio behavior, LiveKit connection, and
+  user-to-AI conversation remain UNTESTED.
 - Interactive check command for the owner: run backend + `cd mobile`,
   `npx expo start --web --port 8081`, open `http://localhost:8081/`.
 
@@ -251,12 +270,12 @@ substitute for the checks above): pytest 3 passed, `tsc` exit 0,
   disabled in opencode config. No migrations run or planned this milestone.
 - OpenCode version on record: 1.14.33. No global permission changes made.
 
-## Next action — CI review (pending)
+## Next action — CI review (historical; CI now green on `0c0751c`)
 
 1. Done: `review/foundation` pushed at `5a91ab9`. This round adds minimal
    CI (`.github/workflows/ci.yml`: backend py3.13 + lockfile + pytest;
    mobile node22 + `npm ci` + typecheck + web export), aligns README/AGENTS
    install lines with the lockfile, fixes the stale test count (5).
-2. Pending: owner reviews the CI commit; push the branch again; open a
-   draft PR. Hosted Actions execution is unproven until it runs — a local
-   workflow file is not proof of green CI.
+2. Historical: CI `35844379073` is successful on `0c0751c`. Owner review
+   of the exact candidate and evidence is still required; every future
+   EAS build needs separate explicit approval.
