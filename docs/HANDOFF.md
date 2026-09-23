@@ -1,11 +1,112 @@
-# HANDOFF — Android development-build setup (uncommitted, for review)
+# HANDOFF — Android first-device-build (build 9f539e50 finished with APK; install/audio UNTESTED)
 
-Date: 2026-09-21. Branch: `feature/android-development-build`, based at
-`origin/main` `5bfdaeb` (PR #1 merged). This round is uncommitted on top;
-it prepares local EAS development-build configuration only. No cloud
-build, login, linking, or voice work.
+PR #2 merged at `15963c4` (main CI passed). This round works on
+`feature/android-first-device-build`, based at `origin/main` `15963c4`.
+WebRTC is pinned exact `144.1.2`; cloud Node is pinned `22.23.2`.
+Two EAS Android attempts are recorded: `5957da33` failed before the
+WebRTC correction (`:livekit_react-native:compileDebugKotlin` namespace
+mismatch; no APK); `9f539e50` finished with an APK for corrected source
+`0c0751c`. GitHub probe `35849621938` also assembled source `0c0751c`;
+its packaged APK had RECORD_AUDIO and no CAMERA. EAS artifact manifest,
+install, microphone, LiveKit connection, and user-to-AI conversation
+remain UNTESTED. Every future build needs the owner's separate explicit
+approval. CI `35844379073` is successful on `0c0751c`. No voice work.
+Pre-merge status below is historical.
 
-## Completed work (this round)
+## EAS setup (this round)
+
+- Tooling: local Node `22.13.0`; `eas-cli@24.7.0` requires
+  `^20.18.3 || >=22.0.0` (satisfied; versioned `npx` invocation, no
+  global install). Cloud image default is Node `20.19.4` (official infra
+  docs); `machina@7.0.1` requires `>=22.22`.
+- Cloud pin: `mobile/eas.json` development profile sets exact
+  `"node": "22.23.2"` — latest Node 22 release verified in the official
+  release index (nodejs.org, 2026-07-28; SHASUMS index HTTP 200),
+  satisfying `>=22.22` on the Node 22 line. Supported by the documented
+  eas.json `node` profile field. No local Node or dependency changes.
+- Local (22.13.0) vs cloud (22.23.2): same major; cloud is minor/patch
+  ahead. Both satisfy eas-cli and Expo SDK 54 (`Node 20.19+`). Cloud
+  `npm install` should no longer raise the machina EBADENGINE warning;
+  local installs still warn (harmless, non-blocking — demonstrated).
+  Pre-build note: cross-version bundler drift was possible in principle;
+  cloud compatibility was then proven only by the build itself. The
+  reported `9f539e50` FINISHED execution is recorded above; EAS artifact
+  manifest remains UNTESTED.
+- Expo identity: `whoami` → `mdasheef` (verified post-login; credentials
+  never in chat). Project **created** (status `created`, not linked —
+  no duplicate): `@mdasheef/call-app-foundation`, ID
+  `4104833e-c58d-48b7-91b2-9bbbd373875d`,
+  https://expo.dev/accounts/mdasheef/projects/call-app-foundation.
+  Slug and Android package preserved. Two EAS Android attempts are
+  recorded (`5957da33` failed before the correction; `9f539e50` finished
+  for corrected source `0c0751c`; see build-attempt entries below).
+- `project:init` rewrote `app.json` beyond linkage: it materialized the
+  webrtc plugin's 8 permissions into static `android.permissions`
+  (including CAMERA) and added `owner`/`extra.eas.projectId`.
+  Post-link introspect re-verified: `blockedPermissions` still strips
+  CAMERA from the resolved list, audio permissions preserved, manifest
+  preview still carries CAMERA with `tools:node="remove"`. Behavior
+  unchanged; final APK manifest still UNTESTED.
+- Preflight (Free-plan budget amendment, all local, zero builds
+  consumed — `build:list` returns `[]`): init rewrite inspected
+  (linkage + materialized perms only); `expo install --check` clean and
+  `expo-doctor` 18/18 re-run post-link; prebuild config resolves;
+  `build:inspect archive` shows upload is 60 files / 0.7 MB with no
+  `node_modules`, `dist-web`, `.env`, keystores, or secrets (only
+  `.env.example` template); local `expo prebuild --platform android`
+  generated a manifest with CAMERA `tools:node="remove"`, audio perms
+  present, `newArchEnabled=true`, `hermesEnabled=true`, namespace
+  `com.callapp.foundation` — generated `android/` removed and the
+  tool-added `ios` npm script reverted afterwards (tree verified clean
+  apart from the three intended files). `build:inspect pre-build`
+  gave inconsistent empty output (`Build failed` once, then silent);
+  not pursued further to protect the budget — recorded, non-blocking.
+- Build attempt (ONE authorized, Free plan): submitted
+  `5957da33-7fc0-4a8e-a1de-544e3b15242e` (created 2026-09-22T05:53:06Z,
+  development/Android). Keystore auto-provisioned in cloud, upload
+  296 KB, fingerprint computed. Status: **ERRORED** (completed
+  05:56:30Z, ~3.5 min) — failing phase **"Run gradlew"**, message
+  "Gradle build failed with unknown error", no artifacts. Phase logs
+  are dashboard-only:
+  https://expo.dev/accounts/mdasheef/projects/call-app-foundation/builds/5957da33-7fc0-4a8e-a1de-544e3b15242e#run-gradlew.
+  No retry/resubmit per budget amendment.
+- Build attempt (subsequent, reported): `9f539e50`
+  (commit `0c0751c`, development profile) FINISHED with an APK artifact
+  (reported via read-only `build:list`; no signed URLs recorded). EAS
+  artifact manifest, install, and audio UNTESTED.
+- Diagnosis (read-only, via CLI `logFiles` reference; signed URL
+  redacted; Brotli payload decoded locally): failing task
+  `:livekit_react-native:compileDebugKotlin`, 18 errors, all
+  `org.webrtc` ↔ `livekit.org.webrtc` type mismatches (e.g.
+  `CustomVideoDecoderFactory.kt:50` expected `org.webrtc.VideoDecoder?`,
+  actual `livekit.org.webrtc.VideoDecoder?`). Root cause confirmed:
+  `144.2.0` depends on `io.github.webrtc-sdk:android-prefixed`
+  (relocated namespace) while `@livekit/react-native@2.12.0` Kotlin
+  imports unprefixed `org.webrtc.*`; published `144.1.2` tarball
+  verified to depend on unprefixed `io.github.webrtc-sdk:android`.
+- Correction (this round): `@livekit/react-native-webrtc`
+  pinned exact `144.1.2` (`mobile/package.json:17`); lockfile updated
+  by normal `npm install` (8-line diff, webrtc entry only).
+  `@livekit/react-native` stays `2.12.0`. Installed `144.1.2` verified:
+  gradle dep is unprefixed `android:144.7559.05`, no `livekit/` java
+  sources, proxies import `org.webrtc.*`. Peers satisfied (`^144.1.2`,
+  `livekit-client ^2.19.0` vs `2.22.3`; `npm ls` clean, single
+  versions). Checks: `install --check` clean, `expo-doctor` 18/18,
+  `tsc` exit 0, web export 3 routes, introspect shows owner/projectId,
+  block, audio perms, and CAMERA `tools:node="remove"` intact.
+  The namespace mismatch is addressed by dependency alignment plus
+  compilation evidence below — EAS artifact manifest, install, and phone
+  behavior remain UNTESTED. Second build `9f539e50` reported finished
+  (see build-attempt entry).
+- Build verification: CI `35844379073` successful on `0c0751c`;
+  GitHub probe `35849621938` separately compiled the same source
+  (`:app:assembleDebug` BUILD SUCCESSFUL; packaged APK had RECORD_AUDIO
+  and no CAMERA). EAS artifact manifest was not inspected.
+- Next action: focused review of this correction. Every future build
+  needs the owner's separate explicit approval after reviewing the exact
+  candidate and evidence.
+
+## Completed work (historical — earlier install with `^144.2.0`)
 
 - Installed via `npx expo install` (no force, no upgrades):
   `expo-dev-client ~6.0.21`, `livekit-client ^2.22.3`,
@@ -40,7 +141,7 @@ build, login, linking, or voice work.
   remain UNTESTED (see Untested below).
 - Prior rounds below are kept for the record.
 
-## Completed work (this round, on top of the foundation)
+## Completed work (historical — on top of the foundation)
 
 - `AGENTS.md`: durable process-safety rule (never kill by broad exe name;
   stop only own PIDs after ownership check; preserve unrelated servers).
@@ -69,7 +170,13 @@ build, login, linking, or voice work.
 - LiveKit `1.2.12` import verified on Python 3.13 in `backend/.venv` only;
   not in committed requirements.
 
-## Verification evidence
+## Verification evidence (historical — foundation round at `9167a74`; current CI for `0c0751c` above)
+
+CI `35844379073` is successful on `0c0751c`. Implementation revision
+tested: `0c0751c` on `feature/android-first-device-build`; base: `main`
+at `15963c4` (`origin/main`). The paragraphs below record the foundation
+round on top of `9167a74` and are preserved unchanged as historical
+evidence.
 
 Checks rerun in this correction round (working tree on top of `9167a74`):
 
@@ -95,10 +202,16 @@ Independent reviewers' checks at `9167a74` (review-only runs, not a
 substitute for the checks above): pytest 3 passed, `tsc` exit 0,
 `expo-doctor` 18/18, live health-check ok.
 
-## Untested
+## Untested (device/runtime; compilation is recorded above)
 
-- Android build: UNTESTED (no Studio/SDK/adb on this machine).
-- Physical device: UNTESTED (no device, no voice implemented).
+- Android build artifact: two EAS attempts are recorded (`5957da33`
+  failed before the WebRTC correction; `9f539e50` finished with an APK
+  for corrected source `0c0751c`); probe `35849621938` also assembled
+  source `0c0751c`. EAS artifact manifest UNTESTED; no local
+  Studio/SDK/adb on this machine.
+- Physical device: UNTESTED — no device connected, no voice implemented.
+  Installation, microphone/audio behavior, LiveKit connection, and
+  user-to-AI conversation remain UNTESTED.
 - Interactive check command for the owner: run backend + `cd mobile`,
   `npx expo start --web --port 8081`, open `http://localhost:8081/`.
 
@@ -112,12 +225,12 @@ substitute for the checks above): pytest 3 passed, `tsc` exit 0,
   disabled in opencode config. No migrations run or planned this milestone.
 - OpenCode version on record: 1.14.33. No global permission changes made.
 
-## Next action — CI review (pending)
+## Next action — CI review (historical; CI now green on `0c0751c`)
 
 1. Done: `review/foundation` pushed at `5a91ab9`. This round adds minimal
    CI (`.github/workflows/ci.yml`: backend py3.13 + lockfile + pytest;
    mobile node22 + `npm ci` + typecheck + web export), aligns README/AGENTS
    install lines with the lockfile, fixes the stale test count (5).
-2. Pending: owner reviews the CI commit; push the branch again; open a
-   draft PR. Hosted Actions execution is unproven until it runs — a local
-   workflow file is not proof of green CI.
+2. Historical: CI `35844379073` is successful on `0c0751c`. Owner review
+   of the exact candidate and evidence is still required; every future
+   EAS build needs separate explicit approval.
