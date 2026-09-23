@@ -14,12 +14,16 @@ No auth, database, voice connection, memory, or analytics yet.
 - `backend/` — minimal FastAPI app with `GET /health` and `GET /v1/status`
   plus pytest endpoint tests. Isolated venv at `backend/.venv` (not committed).
 - `mobile/eas.json` — development profile only (`developmentClient: true`,
-  `distribution: internal`, Android APK, cloud Node pin). Linked to
-  `@mdasheef/call-app-foundation` (owner `mdasheef`). One development
-  build was submitted and failed (Gradle `:livekit_react-native`
-  namespace mismatch; no APK); 1 Free-plan Android build consumed, $0
-  plan with no charge. Every future build needs the owner's separate
-  explicit approval. Phone verification is pending.
+  `distribution: internal`, Android APK, cloud Node `22.23.2`). Linked to
+  `@mdasheef/call-app-foundation` (owner `mdasheef`). WebRTC is pinned
+  exact `144.1.2`. Two EAS Android attempts are recorded: `5957da33`
+  failed before the WebRTC correction (Gradle `:livekit_react-native`
+  namespace mismatch; no APK); `9f539e50` finished with an APK for
+  corrected source `0c0751c`. GitHub probe `35849621938` also assembled
+  source `0c0751c`; its packaged APK had RECORD_AUDIO and no CAMERA. EAS
+  artifact manifest, install, and audio remain UNTESTED. Every future
+  build needs the owner's separate explicit approval. Phone verification
+  is pending.
 - `.env.example` — local-only settings template, no secrets.
 - Native audio dependencies are installed for the voice spike
   (`expo-dev-client`, `livekit-client`, `@livekit/react-native`,
@@ -134,12 +138,13 @@ Expo Go will NOT work for native audio — development build only.
 
 ## Verification status (this milestone)
 
-Tested code revision: `9167a74` plus the uncommitted corrections in this
-round (CORS regression tests, lockfile BOM removal, doc fixes).
+Tested code revision: `0c0751c`.
 
-- Checks rerun now: `pytest backend/tests` 5 passed;
-  `npx tsc --noEmit` exit 0; `npx expo-doctor` 18/18 (see HANDOFF for
-  dates and the web-export result).
+- CI `35844379073` successful on `0c0751c`: backend pytest 5 passed;
+  mobile `npm ci` + `tsc --noEmit` + web export passed.
+- Historical (foundation round at `9167a74`, preserved): `pytest
+  backend/tests` 5 passed; `npx tsc --noEmit` exit 0;
+  `npx expo-doctor` 18/18; web export 3 routes.
 - Earlier implementation browser inspection (2026-09-20, backend live):
   Home rendered, `Backend: ok (0.0.1-foundation)`, simulated-call toggle
   worked, 0 console errors (1 framework `pointerEvents` deprecation
@@ -147,9 +152,15 @@ round (CORS regression tests, lockfile BOM removal, doc fixes).
 - Independent reviewers' checks at `9167a74`: pytest 3 passed, `tsc`
   exit 0, `expo-doctor` 18/18, live `GET /health` returned
   `{"status":"ok",...}` on an unused test port. Reviewer runs, not a
-  substitute for the checks above.
-- Android build completed: UNTESTED — no local Android Studio/SDK/adb
-  on this machine (by design); the one EAS cloud attempt errored with
-  no APK (see HANDOFF for build ID, diagnosis, and correction).
+  substitute for the checks above. Historical; CI above is the current
+  record for `0c0751c`.
+- Android build completed: two EAS Android attempts are recorded —
+  `5957da33` failed before the WebRTC correction; `9f539e50` finished
+  with an APK for corrected source `0c0751c` (see HANDOFF). GitHub probe
+  `35849621938` also assembled source `0c0751c`; its packaged APK had
+  RECORD_AUDIO and no CAMERA. EAS artifact manifest, install, and audio
+  remain UNTESTED; no local Android Studio/SDK/adb on this machine
+  (by design).
 - Physical-device behavior tested: UNTESTED — no device connected, no voice
-  implemented (simulated UI states only, labelled as such).
+  implemented (simulated UI states only, labelled as such). Microphone,
+  LiveKit connection, and user-to-AI conversation remain UNTESTED.
