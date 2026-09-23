@@ -1,7 +1,7 @@
-# One-off native-compilation probe for PR #3 candidate 0c0751c.
+# One-off full-assembly probe for PR #3 candidate 0c0751c.
 # Probe branch ONLY — never merge, never add to PR #3 or main.
-# Runs the previously failing :livekit_react-native:compileDebugKotlin
-# on a standard GitHub-hosted runner. No assemble/sign/APK/upload.
+# Runs :app:assembleDebug and inspects packaged APK permissions
+# on the runner. No sign/APK upload/publish/distribute/install.
 name: probe-kotlin-compile
 
 on:
@@ -14,7 +14,7 @@ permissions:
 jobs:
   kotlin:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: mobile
@@ -46,8 +46,15 @@ jobs:
       - name: Gradle WebRTC artifact resolution
         working-directory: mobile/android
         run: ./gradlew :livekit_react-native:dependencies --configuration debugRuntimeClasspath | grep -i -m5 webrtc || true
-      - name: Compile previously failing task
+      - name: Assemble debug APK (no sign/upload/install)
         working-directory: mobile/android
         run: |
           chmod +x gradlew
-          ./gradlew :livekit_react-native:compileDebugKotlin
+          ./gradlew :app:assembleDebug
+      - name: Inspect packaged APK permissions on runner
+        working-directory: mobile/android
+        run: |
+          AAPT="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt"
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          ls -la "$APK"
+          "$AAPT" dump permissions "$APK"
