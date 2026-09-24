@@ -5,6 +5,9 @@ node_modules/
 dist/
 dist-web/
 web-build/
+# Mobile test-runner output (regression tests compile here; never committed)
+.test-build/
+.test-baseline/
 *.jks
 *.keystore
 

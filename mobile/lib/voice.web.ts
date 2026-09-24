@@ -9,3 +9,31 @@ export function getVoiceBackendStatus(): string {
 export function assertNoVoiceYet(): never {
   throw new Error("Voice is not available in the web preview.");
 }
+
+import type { VoiceTestHandle, VoiceTestStatus } from "./voice";
+
+export function getVoiceTestInitialStatus(): VoiceTestStatus {
+  return {
+    state: "unsupported",
+    muted: false,
+    participantCount: 0,
+    errorMessage: null,
+  };
+}
+
+export function startVoiceTest(): Promise<VoiceTestHandle> {
+  return Promise.reject(new Error("Voice test is not available in the web preview."));
+}
+
+/**
+ * Truthful microphone label for display (mirrors `voice.ts` and
+ * `voice.native.ts`; keep all three in sync). Web never publishes,
+ * so this always reports off — the screen never shows a live
+ * microphone in the preview.
+ */
+export function describeMicrophone(status: VoiceTestStatus): string {
+  if (status.state === "connected" || status.state === "reconnecting") {
+    return status.muted ? "muted" : "live";
+  }
+  return "off";
+}

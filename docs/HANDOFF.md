@@ -106,6 +106,78 @@ Pre-merge status below is historical.
   needs the owner's separate explicit approval after reviewing the exact
   candidate and evidence.
 
+## LiveKit audio spike (reviewed; JS-only experiment — not working voice)
+
+- Branch `feature/livekit-audio-spike` from `0c0751c`. Native-only
+  audio test at `mobile/app/voice-test.tsx` (linked from Home):
+  tap Start → dev token minted on demand → mic permission →
+  `AudioSession` (communication preset) + `Room.connect` +
+  `setMicrophoneEnabled(true)`; states
+  idle/requesting/connecting/connected/reconnecting/denied/error/ended,
+  participant count, Mute/End; mic + session released on End, error,
+  screen exit, or genuine app background. Foreground-only: background
+  ends a live session; `inactive` (e.g. permission dialog) never does.
+  Audio-only: no camera/video/record/transcript/agent.
+  Credentials: NO static token. On-demand tokens via the installed
+  `livekit-client` `TokenSource.developmentTokenServer`, keyed by
+  gitignored `mobile/.env` `EXPO_PUBLIC_LIVEKIT_TOKEN_SERVER_ID`
+  (name only in `.env.example`, unset by default); tokens expire after
+  ~15 min and are never embedded in client JavaScript. The ID permits
+  unrestricted development token requests — dev-only, explicitly
+  excluded from pilot/production (which needs a backend token
+  endpoint). LiveKit imports exist only in `lib/voice.native.ts`;
+  orchestration lives in framework-free `lib/voice-session.ts`.
+- Evidence (code-level only): `tsc` exit 0; `voice-config` logic
+  checked in plain Node (missing/configured); focused Node-harness
+  checks with mocked LiveKit modules for Start→exit (pending start
+  disposed on completion), Start→End, and Mute-in-flight→End;
+  Android Hermes bundle 4.39 MB exit 0; web export 4 routes; web bundle
+  contains the screen in `unsupported`/`needs-config` form with zero
+  LiveKit SDK symbols; `git diff --check` clean. New files:
+  `app/voice-test.tsx`, `lib/voice-config.ts`, `lib/voice-session.ts`.
+- Build status (rechecked read-only via authenticated `eas-cli`
+  `build:list`; no signed URLs recorded): first build `5957da33`
+  ERRORED (no artifacts); later build `9f539e50` (commit `0c0751c`,
+  development profile) FINISHED with an APK artifact. This spike is
+  JS-only (no `package.json`/`app.json`/native change), so it loads
+  through Metro and does not itself require a new APK. Phone
+   installation, LiveKit Cloud connectivity, and two-way audio are
+   UNTESTED.
+- Focused recheck closed the cleanup-race and credential findings
+  against the actual diff plus untracked files (fresh mocked harness,
+  typecheck/web+android exports rerun). Item 5 (two-human diagnostic
+  support) is excluded by the owner and not implemented. Still
+  UNTESTED: user-to-AI integration, LiveKit Cloud connectivity from a
+  device, phone install, and real-microphone behavior. Scope stays
+  one human talking to one AI; no two-human diagnostic.
+- Correction round (uncommitted, for focused independent review):
+  truthful microphone display — `describeMicrophone` in `voice.ts`
+  with native/web mirrors reports live/muted only in
+  connected/reconnecting and off otherwise; `connected` is entered
+  only after mic publish succeeds; participantCount is 0 until
+  Connected — plus unexpected-disconnect cleanup (mic off,
+  AudioSession stopped, listeners removed, error status, never a
+  false "ended"; disconnect during Start rejects instead of
+  returning a handle; End awaits in-flight cleanup). Persistent
+  regression tests: `npm test` in `mobile/` compiles `lib`+`tests`
+  with the existing TypeScript toolchain to gitignored
+  `.test-build/`, then Node's built-in runner executes them against
+  mocked LiveKit events. Proven: disconnect after connection
+  releases resources exactly once and reports error (End afterwards
+  changes nothing); disconnect during Start rejects; connected/
+  "live" only after publish; pre-connection counts truthful;
+  pending-Start disposal and Mute-in-flight/End races stay closed;
+  display contract identical across shared/native/web. Red/green:
+  the same compiled tests against HEAD `7b232ef` pre-fix sources
+  (disposable `.test-baseline/`, removed after the run) fail 5 —
+  no cleanup after disconnect (mic still enabled), connected before
+  publish, Start resolving after disconnect, missing
+  `describeMicrophone` ×2 — and pass the 5 previously-fixed
+  voluntary-End/session-race checks; the fixed tree passes 10/10.
+  CI mobile job now runs `npm test`. Still UNTESTED: phone
+  installation, real microphone/audio, LiveKit Cloud connectivity
+  from a device, user-to-AI conversation.
+
 ## Completed work (historical — earlier install with `^144.2.0`)
 
 - Installed via `npx expo install` (no force, no upgrades):
