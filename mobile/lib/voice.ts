@@ -45,6 +45,22 @@ export interface VoiceTestHandle {
   end(): Promise<void>;
 }
 
+/**
+ * Truthful microphone label for display. Live is reported only after
+ * publishing succeeds (`connected`/`reconnecting`, honoring the mute
+ * toggle). Every other state — idle, needs-config, requesting,
+ * connecting, denied, error, ended, unsupported — reports off, even
+ * though the shared `muted` flag defaults to false. (Native and web
+ * mirror this in `voice.native.ts`/`voice.web.ts` for Metro runtime
+ * resolution; keep all three in sync.)
+ */
+export function describeMicrophone(status: VoiceTestStatus): string {
+  if (status.state === "connected" || status.state === "reconnecting") {
+    return status.muted ? "muted" : "live";
+  }
+  return "off";
+}
+
 export function getVoiceTestInitialStatus(): VoiceTestStatus {
   throw new Error("platform-specific module must implement getVoiceTestInitialStatus");
 }

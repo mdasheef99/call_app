@@ -150,6 +150,33 @@ Pre-merge status below is historical.
   UNTESTED: user-to-AI integration, LiveKit Cloud connectivity from a
   device, phone install, and real-microphone behavior. Scope stays
   one human talking to one AI; no two-human diagnostic.
+- Correction round (uncommitted, for focused independent review):
+  truthful microphone display — `describeMicrophone` in `voice.ts`
+  with native/web mirrors reports live/muted only in
+  connected/reconnecting and off otherwise; `connected` is entered
+  only after mic publish succeeds; participantCount is 0 until
+  Connected — plus unexpected-disconnect cleanup (mic off,
+  AudioSession stopped, listeners removed, error status, never a
+  false "ended"; disconnect during Start rejects instead of
+  returning a handle; End awaits in-flight cleanup). Persistent
+  regression tests: `npm test` in `mobile/` compiles `lib`+`tests`
+  with the existing TypeScript toolchain to gitignored
+  `.test-build/`, then Node's built-in runner executes them against
+  mocked LiveKit events. Proven: disconnect after connection
+  releases resources exactly once and reports error (End afterwards
+  changes nothing); disconnect during Start rejects; connected/
+  "live" only after publish; pre-connection counts truthful;
+  pending-Start disposal and Mute-in-flight/End races stay closed;
+  display contract identical across shared/native/web. Red/green:
+  the same compiled tests against HEAD `7b232ef` pre-fix sources
+  (disposable `.test-baseline/`, removed after the run) fail 5 —
+  no cleanup after disconnect (mic still enabled), connected before
+  publish, Start resolving after disconnect, missing
+  `describeMicrophone` ×2 — and pass the 5 previously-fixed
+  voluntary-End/session-race checks; the fixed tree passes 10/10.
+  CI mobile job now runs `npm test`. Still UNTESTED: phone
+  installation, real microphone/audio, LiveKit Cloud connectivity
+  from a device, user-to-AI conversation.
 
 ## Completed work (historical — earlier install with `^144.2.0`)
 

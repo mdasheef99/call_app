@@ -36,6 +36,21 @@ function baseStatus(state: VoiceTestState): VoiceTestStatus {
   return { state, muted: false, participantCount: 0, errorMessage: null };
 }
 
+/**
+ * Truthful microphone label for display. Live is reported only after
+ * publishing succeeds (`connected`/`reconnecting`, honoring the mute
+ * toggle). Every other state — idle, needs-config, requesting,
+ * connecting, denied, error, ended — reports off, even though the
+ * shared `muted` flag defaults to false. (Base contract in `voice.ts`
+ * and web mirror in `voice.web.ts`; keep all three in sync.)
+ */
+export function describeMicrophone(status: VoiceTestStatus): string {
+  if (status.state === "connected" || status.state === "reconnecting") {
+    return status.muted ? "muted" : "live";
+  }
+  return "off";
+}
+
 export function getVoiceTestInitialStatus(): VoiceTestStatus {
   const config = getVoiceTestConfig();
   if (!config.ok) return baseStatus("needs-config");
@@ -64,9 +79,14 @@ export async function startVoiceTest(
   const room = new Room();
   let settled = false;
   let muted = false;
-  let endedByUs = false;
+  // True only after setMicrophoneEnabled(true) succeeds: `connected` /
+  // `reconnecting` states (which the microphone display maps to
+  // live/muted) may not be entered before the microphone is published.
+  let published = false;
   let endPromise: Promise<void> | null = null;
-  let status: VoiceTestStatus = { ...baseStatus("requesting"), participantCount: 1 };
+  // participantCount 0 until Connected: no room exists during token mint
+  // and audio setup, so a count of 1 would not be truthful.
+  let status: VoiceTestStatus = baseStatus("requesting");
 
   const emit = (next: VoiceTestStatus) => {
     status = next;
@@ -92,15 +112,66 @@ export async function startVoiceTest(
     throw error instanceof Error ? error : new Error(message);
   };
 
+  // Unexpected remote/network disconnect: full terminal cleanup
+  // (microphone off, disconnect best-effort, audio session stopped,
+  // listeners removed) reporting error — never a false "ended".
+  // Mutual exclusion via `settled` keeps this safe against a concurrent
+  // End, screen exit, or start-failure path: exactly one path owns the
+  // terminal state, and the shared `endPromise` below stays resolved
+  // without overwriting it.
+  let unexpectedDisconnect: Promise<void> | null = null;
+  const cleanupOnUnexpectedDisconnect = () => {
+    if (!unexpectedDisconnect) {
+      unexpectedDisconnect = (async () => {
+        settled = true;
+        try {
+          await room.localParticipant.setMicrophoneEnabled(false);
+        } catch {
+          // Best effort: the track may already be gone.
+        }
+        try {
+          await room.disconnect(true);
+        } catch {
+          // Best effort: the transport is already down.
+        }
+        try {
+          await AudioSession.stopAudioSession();
+        } catch {
+          // Best effort: release whatever was started.
+        } finally {
+          room.removeAllListeners();
+        }
+        emit({
+          ...baseStatus("error"),
+          muted,
+          participantCount: 0,
+          errorMessage: "Disconnected unexpectedly.",
+        });
+      })();
+    }
+    return unexpectedDisconnect;
+  };
+
   room
     .on(RoomEvent.Connected, () => {
-      if (!settled) emit({ ...baseStatus("connected"), muted, participantCount: count() });
+      if (settled) return;
+      if (!published) {
+        // Initial connection completes before the microphone publishes;
+        // stay in `connecting` so the display never claims a live mic
+        // until publish succeeds. The count is truthful: we are already
+        // in the room even though audio is not yet flowing.
+        emit({ ...status, state: "connecting", participantCount: count() });
+        return;
+      }
+      emit({ ...baseStatus("connected"), muted, participantCount: count() });
     })
     .on(RoomEvent.Reconnecting, () => {
-      if (!settled) emit({ ...status, state: "reconnecting", participantCount: count() });
+      if (settled) return;
+      emit({ ...status, state: published ? "reconnecting" : "connecting", participantCount: count() });
     })
     .on(RoomEvent.Reconnected, () => {
-      if (!settled) emit({ ...status, state: "connected", participantCount: count() });
+      if (settled) return;
+      emit({ ...status, state: published ? "connected" : "connecting", participantCount: count() });
     })
     .on(RoomEvent.ParticipantConnected, () => {
       if (!settled && status.state === "connected") {
@@ -113,15 +184,10 @@ export async function startVoiceTest(
       }
     })
     .on(RoomEvent.Disconnected, () => {
-      if (!settled) {
-        settled = true;
-        emit({
-          ...baseStatus(endedByUs ? "ended" : "error"),
-          muted,
-          participantCount: 0,
-          errorMessage: endedByUs ? null : "Disconnected unexpectedly.",
-        });
-      }
+      // Our own teardown already set `settled` and emitted its terminal
+      // state, so only an unexpected disconnect reaches cleanup here.
+      if (settled) return;
+      void cleanupOnUnexpectedDisconnect();
     });
 
   try {
@@ -145,21 +211,41 @@ export async function startVoiceTest(
     });
     await AudioSession.startAudioSession();
     await room.connect(connection.serverUrl, connection.participantToken);
+    if (settled) {
+      // An unexpected disconnect landed mid-start; its cleanup owns the
+      // terminal state, so reject Start instead of reporting connected.
+      throw new Error("Disconnected unexpectedly.");
+    }
     // Publishes the microphone; the OS permission prompt appears here
     // on first use because this only ever runs after the user taps Start.
     await room.localParticipant.setMicrophoneEnabled(true);
+    if (settled) {
+      // The session ended while publishing; teardown owns the terminal
+      // state, so reject Start instead of reporting a stale connected.
+      throw new Error("Disconnected unexpectedly.");
+    }
     muted = false;
+    published = true;
     emit({ ...baseStatus("connected"), participantCount: count() });
   } catch (error) {
     await fail(isPermissionDenial(error) ? "denied" : "error", error);
+    // `fail` rethrows when it owns the terminal state; when another path
+    // (unexpected disconnect) already settled, reject Start explicitly so
+    // a connection-time failure never resolves with a handle.
+    throw error instanceof Error ? error : new Error(messageOf(error));
   }
 
   async function teardown(): Promise<void> {
-    // Idempotent: a remotely-ended or failed session has nothing left to
-    // release (fail() already disconnected and stopped the session).
-    if (settled) return;
+    // Idempotent: an unexpectedly-disconnected session has nothing left
+    // to release (its cleanup already disconnected and stopped the
+    // session and owns the terminal state). End still waits for that
+    // in-flight cleanup so resources settle exactly once and the error
+    // status is final before End resolves.
+    if (settled) {
+      if (unexpectedDisconnect) await unexpectedDisconnect.catch(() => undefined);
+      return;
+    }
     settled = true;
-    endedByUs = true;
     try {
       await room.localParticipant.setMicrophoneEnabled(false);
     } catch {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import * as Linking from "expo-linking";
 import {
+  describeMicrophone,
   getVoiceTestInitialStatus,
   startVoiceTest,
 } from "../lib/voice";
@@ -91,7 +92,7 @@ export default function VoiceTestScreen() {
 
       <View style={styles.card}>
         <Text style={styles.row}>State: {describeState(state)}</Text>
-        <Text style={styles.row}>Microphone: {status.muted ? "muted" : "live"}</Text>
+        <Text style={styles.row}>Microphone: {describeMicrophone(status)}</Text>
         <Text style={styles.row}>Participants: {status.participantCount}</Text>
         {status.errorMessage ? <Text style={styles.error}>Error: {status.errorMessage}</Text> : null}
       </View>
