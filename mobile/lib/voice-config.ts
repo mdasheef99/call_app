@@ -21,6 +21,15 @@
 export const VOICE_TEST_TOKEN_SERVER_ID_ENV =
   "EXPO_PUBLIC_LIVEKIT_TOKEN_SERVER_ID";
 
+/**
+ * Named LiveKit agent for the one-human-to-one-AI trial path. The phone
+ * passes this name in its development-token fetch (tapped Start only),
+ * so the token server embeds an explicit dispatch for this agent and no
+ * other. Must match AGENT_NAME in backend/voice_agent_dev.py. The worker
+ * idles with no dispatch — nothing auto-starts.
+ */
+export const VOICE_AGENT_NAME = "think-partner-dev";
+
 export interface VoiceTestConfig {
   tokenServerId: string;
 }
@@ -30,8 +39,9 @@ export type VoiceTestConfigResult =
   | { ok: false; missing: string[] };
 
 export function getVoiceTestConfig(): VoiceTestConfigResult {
+  // Static dot-notation so Metro inlines EXPO_PUBLIC_* in packaged bundles.
   const tokenServerId = (
-    process.env[VOICE_TEST_TOKEN_SERVER_ID_ENV] ?? ""
+    process.env.EXPO_PUBLIC_LIVEKIT_TOKEN_SERVER_ID ?? ""
   ).trim();
   if (!tokenServerId) {
     return { ok: false, missing: [VOICE_TEST_TOKEN_SERVER_ID_ENV] };

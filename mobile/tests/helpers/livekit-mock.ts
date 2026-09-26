@@ -43,8 +43,11 @@ export class FakeRoom {
   disconnectCalls = 0;
   removeAllListenersCalls = 0;
   readonly micCalls: boolean[] = [];
+  /** Final effective mic state: the last SUCCESSFUL setMicrophoneEnabled value. */
+  micEffective = false;
   private readonly listeners = new Map<string, Set<Listener>>();
   private readonly micHolds = new Map<number, MicHold>();
+  private readonly micFailures = new Map<number, Error>();
 
   readonly localParticipant = {
     setMicrophoneEnabled: async (enabled: boolean): Promise<void> => {
@@ -56,8 +59,16 @@ export class FakeRoom {
         hold.used = true;
         await hold.gate;
       }
+      const failure = this.micFailures.get(call);
+      if (failure) throw failure;
+      this.micEffective = enabled;
     },
   };
+
+  /** Make the given (1-based) setMicrophoneEnabled call throw instead of applying. */
+  failMicCall(call: number, error: Error): void {
+    this.micFailures.set(call, error);
+  }
 
   constructor() {
     FakeRoom.last = this;
@@ -126,20 +137,51 @@ export class FakeRoom {
   }
 }
 
+type FetchHold = { used: boolean; markEntered: () => void; gate: Promise<void> };
+let holdFetch: FetchHold | null = null;
+
+/** Hold the next token fetch (models a stalled fetch that never settles on its own). */
+export function armHoldFetch(): { entered: Promise<void>; release: () => void } {
+  let markEntered!: () => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    markEntered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  holdFetch = { used: false, markEntered, gate };
+  return { entered, release };
+}
+
 const livekitClientMock = {
   Room: FakeRoom,
   RoomEvent,
   TokenSource: {
     developmentTokenServer(_tokenServerId: string) {
       return {
-        fetch: async (_options: unknown) => ({
-          serverUrl: "wss://example.invalid",
-          participantToken: "development-token",
-        }),
+        fetch: async (options: unknown) => {
+          lastFetchOptions = options as Record<string, unknown>;
+          fetchCalls += 1;
+          const hold = holdFetch;
+          if (hold && !hold.used) {
+            hold.used = true;
+            hold.markEntered();
+            await hold.gate;
+          }
+          return {
+            serverUrl: "wss://example.invalid",
+            participantToken: "development-token",
+          };
+        },
       };
     },
   },
 };
+
+/** Last token-fetch options seen (agentName dispatch assertion). */
+export let lastFetchOptions: Record<string, unknown> | null = null;
+export let fetchCalls = 0;
 
 const reactNativeMock = {
   registerGlobals: () => undefined,
@@ -173,6 +215,9 @@ process.env.EXPO_PUBLIC_LIVEKIT_TOKEN_SERVER_ID = "test-token-server-id";
 export function resetLiveKitMock(): void {
   FakeRoom.last = null;
   FakeRoom.holdConnect = null;
+  holdFetch = null;
+  lastFetchOptions = null;
+  fetchCalls = 0;
   audioSession.configureCalls = 0;
   audioSession.startCalls = 0;
   audioSession.stopCalls = 0;

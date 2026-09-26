@@ -8,7 +8,17 @@ import {
 } from "../lib/voice";
 import type { VoiceTestStatus } from "../lib/voice";
 import { VoiceTestSession } from "../lib/voice-session";
-import { VOICE_TEST_TOKEN_SERVER_ID_ENV } from "../lib/voice-config";
+
+/**
+ * Display-only copy of the token-server variable NAME (not its value).
+ * Deliberately not imported from the env-bearing config module: Metro
+ * inlines referenced client env values into bundles at build time, so
+ * this web-reachable screen must never import that module — otherwise
+ * the development token-server ID would bake into the web output.
+ * If the variable is ever renamed, update both places together
+ * (covered by the web-boundary source test).
+ */
+const TOKEN_SERVER_ID_ENV_NAME = "EXPO_PUBLIC_LIVEKIT_TOKEN_SERVER_ID";
 
 export default function VoiceTestScreen() {
   const [status, setStatus] = useState<VoiceTestStatus>(() => getVoiceTestInitialStatus());
@@ -81,7 +91,21 @@ export default function VoiceTestScreen() {
 
   const state = status.state;
   const active = state === "connected" || state === "reconnecting";
-  const canStart = !busy && (state === "idle" || state === "ended" || state === "error" || state === "denied");
+  const pending = state === "requesting" || state === "connecting";
+  // Release-unconfirmed means a mic-off attempt failed: the mic may
+  // still be live. Keep an End affordance (retry), and never offer a
+  // second Start while the release is unresolved.
+  const releaseUnconfirmed = status.micUnconfirmed === true;
+  // Cleanup-failed means the last End/teardown failed with the handle
+  // retained: show the problem (error line above) with an End retry,
+  // never a Start that cannot proceed. Independent of the mic flag — a
+  // disconnect failure keeps the mic label truthfully off.
+  const cleanupFailed = status.cleanupFailed === true;
+  const canStart =
+    !busy &&
+    !releaseUnconfirmed &&
+    !cleanupFailed &&
+    (state === "idle" || state === "ended" || state === "error" || state === "denied");
 
   return (
     <View style={styles.container}>
@@ -103,7 +127,7 @@ export default function VoiceTestScreen() {
 
       {state === "needs-config" ? (
         <Text style={styles.warning}>
-          Not configured. Set {VOICE_TEST_TOKEN_SERVER_ID_ENV} in mobile/.env (development-only token-server ID
+          Not configured. Set {TOKEN_SERVER_ID_ENV_NAME} in mobile/.env (development-only token-server ID
           — never commit it, never use it for pilot builds), then reload. Tokens are minted on demand and expire
           after about 15 minutes.
         </Text>
@@ -129,6 +153,14 @@ export default function VoiceTestScreen() {
           <Pressable style={styles.button} onPress={onToggleMute}>
             <Text style={styles.buttonText}>{status.muted ? "Unmute" : "Mute"}</Text>
           </Pressable>
+          <Pressable style={styles.button} onPress={onEnd}>
+            <Text style={styles.buttonText}>End</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {!active && (pending || releaseUnconfirmed || cleanupFailed) ? (
+        <View style={styles.rowButtons}>
           <Pressable style={styles.button} onPress={onEnd}>
             <Text style={styles.buttonText}>End</Text>
           </Pressable>
