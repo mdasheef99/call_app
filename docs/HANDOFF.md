@@ -1,8 +1,11 @@
 # HANDOFF — Android first-device-build (APK 9f539e50 INSTALLED on LG Wing; one-person mic/mute/End observed 2026-09-24; received-audio/AI conversation still UNTESTED)
 
-Current checkpoint works on `feature/livekit-audio-spike` at `75f3f9e`;
+Current checkpoint works on `feature/livekit-audio-spike` at `d1891ed`;
 `origin/main` is `ba4db339`. PR #2 merged at `15963c4` (historical EAS
-base, main CI passed).
+base, main CI passed). The voice-draft sections below marked UNCOMMITTED
+were uncommitted at the time of writing; as of this checkpoint they are
+committed locally on this branch (ahead of remote, not merged) — no push,
+no merge, no live claim.
 WebRTC is pinned exact `144.1.2`; cloud Node is pinned `22.23.2`.
 Two EAS Android attempts are recorded: `5957da33` failed before the
 WebRTC correction (`:livekit_react-native:compileDebugKotlin` namespace
@@ -454,7 +457,7 @@ preserved). This file stays the sole current checkpoint.
 `npm test` 23/23, `tsc` clean, `pip check` clean. Still requires a
 live call for everything listed in the 2026-09-25 section above.
 
-## Pending-Start lifecycle fix 2026-09-26 (offline only, UNCOMMITTED)
+## Pending-Start lifecycle fix 2026-09-26 (offline only, committed locally at d1891ed)
 
 - Session (`mobile/lib/voice-session.ts`): End, background, and the
 90-second watchdog now invalidate a pending Start synchronously
@@ -568,6 +571,12 @@ same date.
   explicitly that error text is allowed in runtime logs. Deliberately
   NOT changed in the evidence-correction pass (runtime behavior left
   unchanged).
+- Unresolved-orphan limitation (offline fake only, no device claim):
+  a stalled native Start cannot be cancelled from JS, so a fresh Start
+  waits for the orphan to settle. Remounting the screen (dispose + new
+  session) is not a proven safe retry: an offline fake with a held
+  connect showed transient two-room overlap. Keep work offline; each live
+  connection still needs separate explicit approval.
 - Dev servers stopped after inspection; ports 8000/8081 free. Other running
   servers (port 8082, Bookconnect) belong to other work — untouched.
 - One broad `Stop-Process` on `python.exe` was used mid-task; future kills

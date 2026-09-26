@@ -65,8 +65,11 @@ backend pytest 42/42 (5 health + 37 voice-agent, per the 2026-09-26 HANDOFF
 checkpoint; worker untouched since, not rerun); mobile `npm test` 78/78;
 `tsc` 0; sanitized web export 4 routes (synthetic token-server marker and
 agent name absent).
-LiveKit (`livekit-agents==1.2.12` imports on Python 3.13) is a separate
-experiment in `backend/.venv` only — NOT in requirements.
+LiveKit (`livekit-agents==1.2.12` imports on Python 3.13) is absent from
+`backend/requirements.txt` / `backend/requirements.lock` (foundation-only);
+it is pinned separately in `backend/requirements-voice-dev.txt` /
+`backend/requirements-voice-dev.lock` for the voice-draft worker and
+installed in `backend/.venv` only.
 
 ## Architectural boundaries
 
