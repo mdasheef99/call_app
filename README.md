@@ -1,8 +1,11 @@
-# Call App — Voice Thinking Partner (foundation milestone)
+# Call App — Voice Thinking Partner (foundation + uncommitted voice draft)
 
-Prototype spec v1.0.1 controls v1 scope. This repo currently contains ONLY the
-foundation: docs, a minimal mobile UI shell, and a minimal backend.
-No auth, database, voice connection, memory, or analytics yet.
+Prototype spec v1.0.1 controls v1 scope. The committed foundation is docs,
+a minimal mobile UI shell, and a minimal backend. No auth, database, memory,
+or analytics. Uncommitted in the working tree (offline only, for independent
+review): a native LiveKit audio spike — mic publish, 90-second watchdog,
+End during a pending Start, truthful mic status with End retry — plus a
+dev-only voice-agent worker. No live call made; no device claim.
 
 ## What is in this milestone
 
@@ -20,10 +23,12 @@ No auth, database, voice connection, memory, or analytics yet.
   failed before the WebRTC correction (Gradle `:livekit_react-native`
   namespace mismatch; no APK); `9f539e50` finished with an APK for
   corrected source `0c0751c`. GitHub probe `35849621938` also assembled
-  source `0c0751c`; its packaged APK had RECORD_AUDIO and no CAMERA. EAS
-  artifact manifest, install, and audio remain UNTESTED. Every future
-  build needs the owner's separate explicit approval. Phone verification
-  is pending.
+   source `0c0751c`; its packaged APK had RECORD_AUDIO and no CAMERA. EAS
+   artifact manifest remains UNTESTED. APK `9f539e50` is installed on the
+   LG Wing (dev-client launcher, Metro bundle, Home backend-ok,
+   SIMULATED button verified) and a one-person mic/mute/End cycle was
+   observed; received audio and any AI conversation remain UNTESTED.
+   Every future build needs the owner's separate explicit approval.
 - `.env.example` — local-only settings template, no secrets.
 - Native audio dependencies are installed for the voice spike
   (`expo-dev-client`, `livekit-client`, `@livekit/react-native`,
@@ -90,6 +95,53 @@ npx expo start --web
 Copy `.env.example` to `mobile/.env` for local tweaks (never commit `.env`).
 Backend host/port are passed explicitly as `uvicorn` CLI flags below;
 no backend environment variables are consumed in this milestone.
+
+## Voice-trial setup (development only, uncommitted review draft)
+
+One-human-to-one-AI trial path: `backend/voice_agent_dev.py` worker +
+mobile Audio Test screen with named dispatch `think-partner-dev`.
+The Home call button stays SIMULATED; native LiveKit imports stay in
+`mobile/lib/*.native.ts` (never in shared/web code).
+
+```powershell
+# Trial worker deps (separate approval to install; never in requirements.lock)
+.\backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.lock -r backend\requirements-voice-dev.lock
+```
+
+Trial-shell variables (names only — values are never committed, never
+printed, never placed in the app):
+`GOOGLE_API_KEY` (Gemini API key),
+`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (worker creds).
+The worker refuses to join any room when plugin or key is missing
+(checked before connect, and every refused job still calls
+`ctx.shutdown()`); the worker is explicit-dispatch only with no
+concurrency claim. The 120-second deadline covers the active job
+only (setup awaits through wait; slow awaits are interrupted, but
+synchronous model construction runs to completion and is not
+preemptible by `asyncio.timeout`, with its time counting against the
+deadline at the next await): a Phone End closes the session itself
+and ends the wait promptly even when the agent room stays connected,
+and a `TimeoutError` raised by connect/start is preserved as a setup
+failure while the timeout scope is unexpired — expiry is decided by
+the scope itself, never by comparing the clock. Once the scope HAS
+expired the call is reported as a deadline and ends gracefully, even
+if connect/start caught the cancellation and converted it into a
+`TimeoutError` of its own. A
+session close carrying `CloseReason.ERROR` is a failure (content-free
+reason + error-type metadata) that raises instead of reporting a
+successful end; cancellation is labeled cancelled and still
+propagates.
+On expiry, phone-End, session error, cancellation, or setup failure the worker then runs one
+awaited, bounded cleanup outside that deadline (session close up to
+10 s, one explicit room deletion up to 10 s with SDK auto-delete
+disabled, then `shutdown`). Total wall-clock can exceed 120 s by the
+cleanup budget; awaited deletion only proves the delete call
+completed and does not prove phone mic release. Text input is
+disabled (`text_enabled=False`) for this audio-only worker.
+Run only with separate approvals for plugin install, provider key,
+worker creds, and the Start tap; each live connection needs the
+owner's explicit approval. Provider billing is separate from LiveKit
+allowance (see HANDOFF); no charge is implied by running offline tests.
 
 ## How a physical phone reaches the local backend
 
@@ -158,9 +210,12 @@ Tested code revision: `0c0751c`.
   `5957da33` failed before the WebRTC correction; `9f539e50` finished
   with an APK for corrected source `0c0751c` (see HANDOFF). GitHub probe
   `35849621938` also assembled source `0c0751c`; its packaged APK had
-  RECORD_AUDIO and no CAMERA. EAS artifact manifest, install, and audio
-  remain UNTESTED; no local Android Studio/SDK/adb on this machine
-  (by design).
-- Physical-device behavior tested: UNTESTED — no device connected, no voice
-  implemented (simulated UI states only, labelled as such). Microphone,
-  LiveKit connection, and user-to-AI conversation remain UNTESTED.
+  RECORD_AUDIO and no CAMERA. EAS artifact manifest remains UNTESTED.
+  APK `9f539e50` was installed on the LG Wing via standalone
+  platform-tools outside the repo; install verified, no local Android
+  Studio/SDK (by design).
+- Physical-device behavior tested: PARTIAL 2026-09-24 — install,
+  dev-client launcher, Metro bundle, Home backend-ok, SIMULATED button
+  (both states), and a one-person mic/mute/End cycle with OS-level mic
+  release observed (see HANDOFF). Received audio and any AI conversation
+  remain UNTESTED; the spike so far is mic-only with no agent.
