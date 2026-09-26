@@ -10,10 +10,16 @@
  *   tap) invalidates a still-pending Start or ends a live session.
  *   The timer is cleared on End, failure, background, and disposal.
  *   It marks when cleanup is TRIGGERED, never a guaranteed release.
- * - End works while a Start is still pending: the pending start is
- *   invalidated and detached without waiting, so a stalled await never
- *   stalls End — and a fresh Start waits for the orphan to settle
- *   instead of opening a second room behind it (safety over liveness).
+  * - End works while a Start is still pending: the pending start is
+  *   invalidated and detached without waiting, so a stalled await never
+  *   stalls End — and the Start caller resolves promptly with a
+  *   retryable error instead of hanging busy. A fresh Start waits for
+  *   the orphan to settle instead of opening a second room behind it
+  *   (safety over liveness).
+ *   The wait itself is abortable: End, the watchdog, background, or
+ *   disposal ends the tap promptly with nothing opened, even if the
+ *   orphan never settles. While waiting, the tap reports pending so
+ *   the UI shows End instead of a stale status with no affordance.
  *   Only the owning generation clears the watchdog, so an orphaned
  *   completion can never clear a newer Start's timer.
  * - A Start that is still pending when the screen exits (or the app
@@ -29,11 +35,14 @@
  *   so End always retries fresh: success clears the warning, failure
  *   keeps it retryable, and no second Start runs while the release is
  *   unresolved — whether the failure carried the mic-unconfirmed flag
- *   or not, since a rejected end() is never proven release.
+ *   or not, since a rejected end() is never proven release. Screen
+ *   exit and backgrounding attempt that retained release too instead
+ *   of dropping it with a possibly-live mic.
  * - Genuine backgrounds end a live session (foreground-only test).
- *   Only the `background` state triggers this — never `inactive` — and
- *   only when a live handle exists, so the Android permission dialog
- *   during a pending Start can never falsely end the session.
+ *   Only the `background` state triggers this — never `inactive`. A
+ *   background with no live handle still attempts a retained uncertain
+ *   release; the Android permission dialog during a pending Start
+ *   (no handle, no uncertainty) can never falsely end the session.
  */
 import type { VoiceTestHandle, VoiceTestStatus } from "./voice";
 
@@ -96,6 +105,13 @@ export class VoiceTestSession {
    * a stalled native await cannot be stopped from JS).
    */
   private readonly orphans = new Set<Promise<VoiceTestHandle | null>>();
+  /**
+   * Waiters notified on every generation bump (End/watchdog/background/
+   * dispose invalidation). Lets a Start parked on `orphans` abort
+   * promptly instead of hanging when the orphan never settles — the
+   * aborted tap still never opens a room.
+   */
+  private readonly generationWaiters = new Set<() => void>();
 
   constructor(
     private readonly deps: VoiceTestSessionDeps,
@@ -156,6 +172,45 @@ export class VoiceTestSession {
   }
 
   /**
+   * Bump the generation and wake every waiter parked on `orphans`: the
+   * invalidated run (if any) becomes an orphan, and any tap already
+   * waiting on orphans aborts promptly with nothing opened.
+   */
+  private bumpGeneration(): void {
+    this.generation += 1;
+    const waiters = [...this.generationWaiters];
+    this.generationWaiters.clear();
+    for (const wake of waiters) wake();
+  }
+
+  /**
+   * Wait until every orphan settles so no second room opens behind one.
+   * Resolves true when the coast is clear (caller still re-checks
+   * generation, disposal, app state, and the release gates). Resolves
+   * false when this run itself is invalidated while waiting
+   * (End/watchdog/background/dispose) — even if an orphan never
+   * settles — so the tap ends promptly with nothing opened.
+   */
+  private waitForOrphans(generation: number): Promise<boolean> {
+    if (this.orphans.size === 0) return Promise.resolve(true);
+    if (generation !== this.generation || this.disposed) {
+      return Promise.resolve(false);
+    }
+    return new Promise<boolean>((resolve) => {
+      let done = false;
+      const finish = (value: boolean) => {
+        if (done) return;
+        done = true;
+        this.generationWaiters.delete(onBump);
+        resolve(value);
+      };
+      const onBump = () => finish(false);
+      this.generationWaiters.add(onBump);
+      void Promise.allSettled([...this.orphans]).then(() => finish(true));
+    });
+  }
+
+  /**
    * Permanently invalidate any pending Start WITHOUT waiting for it.
    * The orphaned run's own generation checks dispose its late completion
    * (or swallow its abort) once it settles, so it can never install —
@@ -163,9 +218,10 @@ export class VoiceTestSession {
    * return). A stalled token fetch, connection, or mic publication must
    * not stall the caller: detachment is synchronous. A fresh Start does
    * NOT proceed immediately — it waits for the orphan to settle before
-   * opening a room (see orphans); the run's finally-guard keeps a late
-   * settlement from clearing a newer run's timer. The no-op catch attach
-   * avoids an unhandled rejection if the orphaned run later rejects.
+   * opening a room (see orphans, waitForOrphans); the run's finally-guard
+   * keeps a late settlement from clearing a newer run's timer. The no-op
+   * catch attach avoids an unhandled rejection if the orphaned run later
+   * rejects.
    *
    * Limit (verified against installed livekit-client 2.22.3): token
    * fetch, room connect, and mic publish expose no public cancellation —
@@ -176,7 +232,7 @@ export class VoiceTestSession {
    * that point, never guaranteed.
    */
   private invalidatePendingStart(): void {
-    this.generation += 1;
+    this.bumpGeneration();
     const pending = this.starting;
     this.starting = null;
     if (pending) {
@@ -196,7 +252,9 @@ export class VoiceTestSession {
    *  itself failed with an unconfirmed mic release, to the recovery
    *  handle the displayed End retries (never treated as live: the last
    *  status already shows the failure). Resolves null when the start
-   *  was overtaken and the late session was disposed. Terminal failures
+   *  was overtaken and the late session was disposed, or when a wait
+   *  on unresolved orphans is aborted by End/watchdog/background/
+   *  dispose. Terminal failures
    *  are reported through onStatus. Concurrent Starts are single-flight:
    *  the second rejects. A Start with no live handle is refused while
    *  the release is unconfirmed or a previous cleanup is incomplete —
@@ -227,10 +285,28 @@ export class VoiceTestSession {
       // An invalidated native Start is still unresolved (or its late
       // cleanup unfinished): do not open another room behind it. Every
       // orphan settles to disposal (generation mismatch), never to an
-      // install — then this run proceeds. If this run itself is
-      // invalidated (or the watchdog fires) while waiting, the check
-      // below ends it with nothing opened.
-      await Promise.allSettled([...this.orphans]);
+      // install — then this run proceeds. Report pending now so the UI
+      // shows End instead of the stale pre-tap status with no
+      // affordance; the wait itself aborts promptly when this run is
+      // invalidated (End/watchdog/background/dispose), even if the
+      // orphan never settles — still with nothing opened.
+      const waiting: VoiceTestStatus = {
+        state: "requesting",
+        muted: false,
+        participantCount: 0,
+        errorMessage: "Waiting for previous session cleanup.",
+      };
+      this.lastStatus = waiting;
+      this.onStatus(waiting);
+      const proceeded = await this.waitForOrphans(generation);
+      if (!proceeded) {
+        // Invalidated while waiting: the caller below was already
+        // released with the abort terminal, so just stop here with
+        // nothing opened. The orphan's late settlement still reports
+        // its own terminal through onStatus when it lands.
+        this.clearWatchdogIfCurrent(generation);
+        return null;
+      }
       if (
         this.disposed ||
         generation !== this.generation ||
@@ -334,9 +410,48 @@ export class VoiceTestSession {
     return handle;
     })();
     this.starting = run;
+    // Release the caller promptly when this tap is invalidated
+    // (End/watchdog/background/dispose) even if the stalled native
+    // await never settles: the run itself continues in the background
+    // so the orphan gate and late disposal are unchanged. A stalled
+    // native await cannot be cancelled from JS — this only stops
+    // WAITING for it. Registration is synchronous with the tap, so no
+    // bump can slip between the run's first checks and this waiter.
+    const abortedMarker: unique symbol = Symbol("voice-start-aborted");
+    let onAbort: (() => void) | null = null;
+    const aborted = new Promise<symbol>((resolve) => {
+      onAbort = () => resolve(abortedMarker);
+      if (this.disposed) {
+        // Already torn down: never hang the caller.
+        resolve(abortedMarker);
+      } else {
+        this.generationWaiters.add(onAbort);
+      }
+    });
     try {
-      return await run;
+      const outcome = await Promise.race([run, aborted]);
+      if (typeof outcome === "symbol") {
+        // Invalidated while pending: land the tap in a usable, truthful
+        // state. This only ever replaces a stale pending display — a
+        // terminal status the run already reported (denied/error/ended,
+        // flags included) always stands. Nothing here implies a release
+        // or opens a room.
+        const st = this.lastStatus;
+        if (st !== null && (st.state === "requesting" || st.state === "connecting")) {
+          const stopped: VoiceTestStatus = {
+            state: "error",
+            muted: false,
+            participantCount: 0,
+            errorMessage: "Start ended while pending; tap Start to retry.",
+          };
+          this.lastStatus = stopped;
+          this.onStatus(stopped);
+        }
+        return null;
+      }
+      return outcome;
     } finally {
+      if (onAbort !== null) this.generationWaiters.delete(onAbort);
       if (this.starting === run) this.starting = null;
     }
   }
@@ -411,29 +526,43 @@ export class VoiceTestSession {
     // cannot stall this path either.
     this.clearWatchdog();
     this.invalidatePendingStart();
-    if (!this.handle) return;
-    const active =
-      this.lastStatus === null ||
-      this.lastStatus.state === "connected" ||
-      this.lastStatus.state === "reconnecting";
-    if (!active) return;
+    // A retained uncertain release still needs its End retry even with
+    // no live handle (e.g. a late mic-off failure after a healthy End).
+    // Without uncertainty there is nothing to release; without an
+    // active live session there is nothing transmitting.
+    const needsRecovery =
+      this.lastStatus?.micUnconfirmed === true || this.cleanupIncomplete;
+    if (!this.handle && !needsRecovery) return;
+    if (this.handle && !needsRecovery) {
+      const active =
+        this.lastStatus === null ||
+        this.lastStatus.state === "connected" ||
+        this.lastStatus.state === "reconnecting";
+      if (!active) return;
+    }
     // Foreground-only test: stop transmission when genuinely backgrounded.
     // Fire-and-forget with errors already surfaced through onStatus.
     void this.end().catch(() => undefined);
   }
 
-  /** Screen exit: invalidate pending starts and release the session. */
+  /**
+   * Screen exit: invalidate pending starts and release the session.
+   * A retained uncertain release is attempted first: end() captures
+   * the live/recovery handle synchronously, so clearing the recovery
+   * slot afterwards keeps "cleared on dispose" while letting that
+   * final attempt run instead of stranding a possibly-live mic.
+   */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.generation += 1;
-    this.recoveryHandle = null;
-    this.cleanupIncomplete = false;
+    this.bumpGeneration();
     this.clearWatchdog();
     if (this.removeAppStateListener) {
       this.removeAppStateListener();
       this.removeAppStateListener = null;
     }
     void this.end().catch(() => undefined);
+    this.recoveryHandle = null;
+    this.cleanupIncomplete = false;
   }
 }

@@ -1,6 +1,6 @@
 # HANDOFF — Android first-device-build (APK 9f539e50 INSTALLED on LG Wing; one-person mic/mute/End observed 2026-09-24; received-audio/AI conversation still UNTESTED)
 
-Current checkpoint works on `feature/livekit-audio-spike` at `4a672aa`;
+Current checkpoint works on `feature/livekit-audio-spike` at `75f3f9e`;
 `origin/main` is `ba4db339`. PR #2 merged at `15963c4` (historical EAS
 base, main CI passed).
 WebRTC is pinned exact `144.1.2`; cloud Node is pinned `22.23.2`.
@@ -13,8 +13,10 @@ remains UNTESTED. APK `9f539e50` is INSTALLED on the LG Wing and
 verified (dev-client launcher, Metro bundle, Home backend-ok,
 SIMULATED button in both states); a one-person mic/mute/End cycle was
 observed with OS-level mic release (see sections below). Received
-audio and any AI conversation remain UNTESTED — the spike so far is
-mic-only with no agent in the room. Every future build needs the
+audio and any AI conversation remain UNTESTED — the observed 2026-09-24
+run was mic-only with no agent in the room, while the current Audio
+Test path requests named dispatch on Start tap (never run live).
+Every future build needs the
 owner's separate explicit approval. CI `35844379073` is successful on
 `0c0751c`. Older dated build/spike records moved verbatim to
 `docs/HANDOFF-history-2026-09-24.md`.
@@ -216,7 +218,10 @@ Machine-checked only.
   (`mobile/lib/voice.native.ts` + `VOICE_AGENT_NAME` in
   `voice-config.ts`); SDK-verified the fetch builds the named room
   dispatch. No auto-start, fresh room per Start, worker
-  `load_threshold=1.0`, video off, room deleted on close. Entrypoint
+  `load_threshold=1.0` [superseded 2026-09-25: the worker leaves
+  `load_threshold` at the SDK default with no single-job claim; a
+  load value is a CPU availability signal, not admission control —
+  see the dev-trial setup section below], video off, room deleted on close. Entrypoint
   failure guarantee (own code, offline-covered): post-connect model or
   session-start failure closes any partly created session (awaited
   `aclose` — coroutine in 1.2.12, source-verified) and releases the
@@ -456,10 +461,13 @@ live call for everything listed in the 2026-09-25 section above.
 (generation bump + detach, no waiting for the stalled promise). A
 backgrounded Start can never install even after a foreground return —
 a fresh tap is required. A stalled token fetch, connection, or mic
-publication cannot stall End or the watchdog path; the orphaned run
-disposes on late settle via the existing generation/shouldAbort
-checks, so no room opens behind End/background and mic-off is
-attempted then, never guaranteed.
+ publication cannot stall End or the watchdog path; the orphaned run
+  disposes on late settle via the existing generation/shouldAbort
+  checks, so no room is ever installed behind End/background and no
+  room status is displayed for a dead tap (an already-in-flight
+  `room.connect` can still complete transiently at transport level,
+  but the late `Connected` event is ignored and `fail()` disconnects
+  it) and mic-off is attempted then, never guaranteed.
 - SDK limit (installed livekit-client 2.22.3, read in `node_modules`,
 not assumed): token fetch, room connect, and mic publish expose no
 public cancellation — connect only has 15 s timeouts/retries for the
@@ -486,8 +494,41 @@ Start that cannot proceed — including disconnect failures where the
 mic label truthfully stays off (no mic flag set). 3 more tests
 (flag-free failure marker + clearing, unconfirmed marker consistency,
 session End-retry-then-Start loop).
+- Follow-up correction (same date, uncommitted): abort checks added
+after audio configure/start so a late result can never call
+`room.connect` after invalidation (2 held-stage tests proving zero
+connects); failed-Start disconnect failure now returns a recovery
+handle with `cleanupFailed` (no mic flag — mic stays truthfully off),
+and the first End always attempts the uncertain release instead of
+no-op'ing on a settled recovery handle. 3 more tests. Session/screen
+need no change (existing install, gate, and End/Start wiring already
+route it).
+- Follow-up correction (same date, uncommitted): late mic-recovery
+ownership through dispose/background (dispose attempts the retained
+release before clearing it; background attempts it with no live
+handle or with an unconfirmed live handle, while the pending-Start
+permission-dialog case still no-ops); an unexpected-disconnect
+disconnect failure now sets the same recovery flag as the fail()
+path (a racing Start resolves a recovery vehicle with
+`cleanupFailed` and the mic truthfully off, and End retries the
+ disconnect); orphan waits abort promptly on End/watchdog/
+ background/dispose with nothing opened and no second room, reporting
+ pending ("Waiting for previous session cleanup.") while parked; an
+ aborted wait lands the retryable abort terminal ("Start ended while
+ pending...") instead of restoring a stale status. 7 more tests (3
+ dispose/background ownership, 1 connect/unexpected-disconnect race,
+ 3 orphan-wait pending/abort). Screen needs no change (pending
+ already shows End; both flags already block Start).
+- Follow-up correction (same date, uncommitted): a late `Connected`
+ room event after End/watchdog/background/dispose invalidation no
+ longer displays a nonterminal room status for the dead tap (the
+ handler now honors the same abort signal as the post-connect
+ checks); `fail()` still tears the transient room down and keeps its
+  terminal, with retry flags when uncertain. 2 more tests (late
+  Connected after End during held connect; late Reconnecting/Reconnected
+  after End while connect is in flight). No session/screen change.
 - Counts this pass (latest voice-draft; earlier dated sections are
-historical): mobile `npm test` 63/63, `npx tsc --noEmit` 0,
+historical): mobile `npm test` 78/78, `npx tsc --noEmit` 0,
 sanitized web export 4 routes with the synthetic token-server marker
 and the agent name absent (dotenv loading disabled, client-env
 inlining untouched). Backend suite not rerun (worker untouched):

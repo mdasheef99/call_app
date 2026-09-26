@@ -13,6 +13,8 @@ import assert from "node:assert/strict";
 import {
   FakeRoom,
   RoomEvent,
+  armHoldAudioConfigure,
+  armHoldAudioStart,
   armHoldFetch,
   audioSession,
   flush,
@@ -443,11 +445,98 @@ test("session End during a held mic publication resolves without waiting for it"
   await assertEndSettlesWhileHeld(session.end(), "mic publication");
   hold.release(); // late publish resolves after End
   assert.equal(await startPromise, null, "late publish never installs");
+  // The Start caller resolves on invalidation while late disposal still
+  // runs in the background: wait for the compensation to land (it times
+  // out if compensation never runs).
+  await waitFor(() => room.micEffective === false, "late publish compensated in background");
   assert.equal(room.micEffective, false, "late publish cannot leave the mic enabled");
   assert.ok(
     !statuses.some((s) => s.state === "connected"),
     "never reported connected"
   );
+});
+
+test("session End during held audio configure never opens a room", async () => {
+  resetLiveKitMock();
+  const statuses: VoiceTestStatus[] = [];
+  const session = makeLiveSession((s) => statuses.push(s));
+  const hold = armHoldAudioConfigure();
+  const startPromise = session.start();
+  await hold.entered;
+  await assertEndSettlesWhileHeld(session.end(), "audio configure");
+  hold.release(); // late configure resolves after End
+  assert.equal(await startPromise, null, "late configure never installs");
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+  assert.equal(room.connectCalls, 0, "room.connect never called after invalidation");
+  assert.ok(!room.micCalls.includes(true), "mic never published");
+  assert.ok(
+    !statuses.some((s) => s.state === "connected"),
+    "never reported connected"
+  );
+});
+
+test("session End during held audio start never opens a room", async () => {
+  resetLiveKitMock();
+  const statuses: VoiceTestStatus[] = [];
+  const session = makeLiveSession((s) => statuses.push(s));
+  const hold = armHoldAudioStart();
+  const startPromise = session.start();
+  await hold.entered;
+  await assertEndSettlesWhileHeld(session.end(), "audio start");
+  hold.release(); // late audio start resolves after End
+  assert.equal(await startPromise, null, "late audio start never installs");
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+  assert.equal(room.connectCalls, 0, "room.connect never called after invalidation");
+  assert.ok(!room.micCalls.includes(true), "mic never published");
+  assert.ok(
+    !statuses.some((s) => s.state === "connected"),
+    "never reported connected"
+  );
+});
+
+test("publish failure with rejecting disconnect retains End retry and blocks Start", async () => {
+  resetLiveKitMock();
+  const statuses: VoiceTestStatus[] = [];
+  const session = makeLiveSession((s) => statuses.push(s));
+  const startPromise = session.start();
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+  room.failMicCall(1, new Error("boom-publish")); // publish throws
+  const origDisconnect = room.disconnect.bind(room);
+  room.disconnect = async (...args: unknown[]) => {
+    throw new Error("boom-disconnect");
+  };
+  // Uncertain release (room may still be joined) must resolve a recovery
+  // handle, not reject the room away with nothing to retry.
+  await assert.doesNotReject(startPromise, "uncertain release resolves recovery");
+  const handle = await startPromise;
+  assert.ok(handle, "recovery handle returned");
+  const failed = statuses[statuses.length - 1];
+  assert.equal(failed.state, "error");
+  assert.equal(failed.cleanupFailed, true, "cleanup problem shown with End retry");
+  assert.ok(!failed.micUnconfirmed, "no mic flag: mic-off succeeded, mic stays off");
+  assert.equal(room.micEffective, false, "mic effectively off");
+
+  // A Start while cleanup is uncertain must not open another room: the
+  // retained handle is ended first, and its failure still blocks.
+  await assert.rejects(session.start(), /boom-disconnect/);
+  assert.equal(
+    FakeRoom.last,
+    room,
+    "no second room while the first release is uncertain"
+  );
+
+  room.disconnect = origDisconnect;
+  await session.end(); // displayed-End retry through the retained handle
+  await flush();
+  assert.ok(!statuses[statuses.length - 1]?.cleanupFailed, "success clears the marker");
+
+  await session.start(); // Start allowed again after completed cleanup
+  await flush();
+  assert.notEqual(FakeRoom.last, room, "a new room opened after recovery");
+  assert.equal(FakeRoom.last?.micEffective, true, "new session publishes normally");
 });
 
 test("abort right after the token fetch never connects or starts audio", async () => {
@@ -808,4 +897,183 @@ test("aborted Start never publishes the microphone", async () => {
   hold.release();
   await assert.rejects(p);
   assert.ok(!FakeRoom.last!.micCalls.includes(true), "late abort still prevents publish");
+});
+
+test("connect failure racing a failed unexpected-disconnect cleanup retains End retry", async () => {
+  // The connection stalls while an unexpected disconnect lands whose own
+  // disconnect attempt fails: the room may still be joined even though
+  // the mic is off. Start must resolve a recovery vehicle (not reject
+  // the room away with nothing to retry), with the mic truthfully off
+  // and the cleanup problem advertised — and End must retry it.
+  resetLiveKitMock();
+  const rec = collect();
+  const hold = FakeRoom.armHoldConnect();
+  const startPromise = startVoiceTest(rec.push);
+  await hold.entered;
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+  const origDisconnect = room.disconnect.bind(room);
+  let disconnectAttempts = 0;
+  room.disconnect = async (...args: unknown[]) => {
+    disconnectAttempts += 1;
+    if (disconnectAttempts === 1) throw new Error("boom-disconnect-cleanup");
+    return (origDisconnect as (...a: unknown[]) => Promise<void>)(...args);
+  };
+  room.emit(RoomEvent.Disconnected);
+  await flush();
+  hold.release(); // late connect resolves behind the settled session
+  const handle = await startPromise; // must RESOLVE recovery, not reject
+  await flush();
+  const failed = rec.last();
+  assert.equal(failed?.state, "error");
+  assert.equal(failed?.cleanupFailed, true, "cleanup problem shown with End retry");
+  assert.ok(!failed?.micUnconfirmed, "no mic flag: mic-off succeeded, mic stays off");
+  assert.equal(room.micEffective, false, "mic effectively off");
+
+  await handle.end(); // displayed-End retry releases the room
+  await flush();
+  assert.equal(disconnectAttempts, 2, "End retried the failed disconnect");
+  assert.ok(!rec.last()?.cleanupFailed, "success clears the marker");
+  assert.equal(room.micEffective, false, "mic stays off");
+});
+
+test("late Connected after End during in-flight connect never replaces the terminal display", async () => {
+  // Event order: connect held in flight → End invalidates → connect
+  // resolves late → Connected fires → post-connect checks reject →
+  // fail() tears down. The late room event must not display a
+  // nonterminal room status for the dead tap (the session already
+  // landed its abort terminal); fail() still runs and keeps its
+  // terminal (with retry flags when uncertain).
+  resetLiveKitMock();
+  const statuses: VoiceTestStatus[] = [];
+  const session = makeLiveSession((s) => statuses.push(s));
+  const hold = FakeRoom.armHoldConnect();
+  const startPromise = session.start();
+  await hold.entered;
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+  // NOTE: this harness collects native emits only (makeLiveSession
+  // passes a noop session onStatus), so the session abort terminal is
+  // covered by the session-suite probes; here we assert the native
+  // layer emits nothing room-like after invalidation.
+  await session.end(); // invalidates; caller resolves, no handle
+  const countBefore = statuses.length;
+  hold.release(); // late connect resolves behind End
+  await waitFor(
+    () => statuses.some((s) => s.errorMessage === "Start overtaken; session disposed."),
+    "late fail() terminal lands"
+  );
+  assert.equal(await startPromise, null, "invalidated Start installs nothing");
+  assert.ok(
+    !statuses
+      .slice(countBefore)
+      .some((s) => s.state === "connecting" || s.state === "connected" || s.state === "reconnecting"),
+    "no nonterminal room status after End"
+  );
+  const last = statuses[statuses.length - 1];
+  assert.equal(last?.state, "error", "fail() terminal stands");
+  assert.ok(room.disconnectCalls >= 1, "fail() tore the transient room down");
+  session.dispose();
+});
+
+test("late Reconnecting/Reconnected after End during in-flight connect never display", async () => {
+  // Companion to the late-Connected probe: reconnect events landing
+  // after invalidation (connect still in flight, nothing settled) must
+  // not display nonterminal room statuses for the dead tap either.
+  // Event order: connect held in flight → End invalidates →
+  // Reconnecting + Reconnected emitted → connect resolves late →
+  // post-connect checks reject → fail() tears down. The Disconnected
+  // cleanup path is untouched by this guard.
+  resetLiveKitMock();
+  const statuses: VoiceTestStatus[] = [];
+  const session = makeLiveSession((s) => statuses.push(s));
+  const hold = FakeRoom.armHoldConnect();
+  const startPromise = session.start();
+  await hold.entered;
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+  await session.end(); // invalidates; caller resolves, no handle
+  const countBefore = statuses.length;
+  room.emit(RoomEvent.Reconnecting);
+  room.emit(RoomEvent.Reconnected);
+  hold.release(); // late connect resolves behind End
+  await waitFor(
+    () => statuses.some((s) => s.errorMessage === "Start overtaken; session disposed."),
+    "late fail() terminal lands"
+  );
+  assert.equal(await startPromise, null, "invalidated Start installs nothing");
+  assert.ok(
+    !statuses
+      .slice(countBefore)
+      .some((s) => s.state === "connecting" || s.state === "connected" || s.state === "reconnecting"),
+    "no nonterminal room status after End"
+  );
+  const last = statuses[statuses.length - 1];
+  assert.equal(last?.state, "error", "fail() terminal stands");
+  assert.ok(room.disconnectCalls >= 1, "fail() tore the transient room down");
+  session.dispose();
+});
+
+test("connect rejected while unexpected-disconnect mic-off is held retains End retry", async () => {
+  // Timing the previous connect-race test does not cover: the
+  // unexpected cleanup is still IN FLIGHT (mic-off held) when connect
+  // rejects, so the still-false flags decide and Start throws the only
+  // recovery handle away. When mic-off then fails, the unconfirmed
+  // status is visible but End must still get a fresh mic-off attempt.
+  // Event order: connect entered (in flight) → disconnect emitted →
+  // mic-off held → connect rejects → Start decides → mic-off fails → End.
+  resetLiveKitMock();
+  const statuses: VoiceTestStatus[] = [];
+  const session = makeLiveSession((s) => statuses.push(s));
+  const startPromise = session.start();
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+  // The mock connect only resolves: patch it to a manually-rejected gate.
+  let connectReject!: (error: Error) => void;
+  const connectGate = new Promise<void>((_, reject) => {
+    connectReject = reject;
+  });
+  room.connect = ((...args: unknown[]) => {
+    room.connectCalls += 1;
+    return connectGate;
+  }) as FakeRoom["connect"];
+  await waitFor(() => room.connectCalls === 1, "connect entered and in flight");
+  // Hold the cleanup's mic-off (call #1: publish never ran) unresolved.
+  const micHold = room.holdMicCall(1);
+  room.emit(RoomEvent.Disconnected);
+  await waitFor(() => room.micCalls.length === 1, "unexpected cleanup reaches held mic-off");
+  // Reject connect while cleanup is still pending: flags still false here.
+  connectReject(new Error("boom-connect"));
+  let startOutcome = "pending";
+  let startValue: unknown = "unset";
+  void startPromise.then(
+    (v) => {
+      startOutcome = "resolved";
+      startValue = v;
+    },
+    () => {
+      startOutcome = "rejected";
+    }
+  );
+  for (let i = 0; i < 50; i++) await Promise.resolve();
+  // Mic-off fails only now, after Start already decided.
+  room.failMicCall(1, new Error("boom-mic-off"));
+  micHold.release();
+  await waitFor(
+    () => statuses.some((s) => s.micUnconfirmed === true),
+    "late mic-off failure surfaces unconfirmed"
+  );
+  const failed = statuses[statuses.length - 1];
+  assert.equal(failed?.micUnconfirmed, true);
+  assert.equal(failed?.cleanupFailed, true);
+  // The recovery vehicle must have survived: End makes a fresh attempt
+  // (call #2, which succeeds) instead of resolving as a dead no-op.
+  const offsBefore = offCount(room);
+  await session.end();
+  assert.equal(offCount(room), offsBefore + 1, "End makes a fresh mic-off attempt");
+  assert.equal(startOutcome, "resolved", "Start resolves a recovery vehicle instead of rejecting it away");
+  assert.ok(startValue, "recovery handle retained");
+  assert.ok(!statuses[statuses.length - 1]?.micUnconfirmed, "retry clears the uncertainty");
+  assert.equal(room.micEffective, false, "mic effectively off after retry");
+  session.dispose();
 });

@@ -1,11 +1,13 @@
-# Call App — Voice Thinking Partner (foundation + uncommitted voice draft)
+# Call App — Voice Thinking Partner (foundation + voice-draft checkpoints)
 
 Prototype spec v1.0.1 controls v1 scope. The committed foundation is docs,
 a minimal mobile UI shell, and a minimal backend. No auth, database, memory,
-or analytics. Uncommitted in the working tree (offline only, for independent
-review): a native LiveKit audio spike — mic publish, 90-second watchdog,
-End during a pending Start, truthful mic status with End retry — plus a
-dev-only voice-agent worker. No live call made; no device claim.
+or analytics. The voice draft is committed as local checkpoints on
+`feature/livekit-audio-spike` (ahead of remote, not merged, offline only,
+for independent review): a native LiveKit audio spike — mic publish,
+90-second watchdog, End during a pending Start, orphan gating, truthful
+mic/cleanup status with End retry — plus a dev-only voice-agent worker.
+No live call made; no device claim.
 
 ## What is in this milestone
 
@@ -32,8 +34,10 @@ dev-only voice-agent worker. No live call made; no device claim.
 - `.env.example` — local-only settings template, no secrets.
 - Native audio dependencies are installed for the voice spike
   (`expo-dev-client`, `livekit-client`, `@livekit/react-native`,
-  `@livekit/react-native-webrtc` + Expo plugins) but never imported: the
-  call button stays SIMULATED and web preview still bundles without them.
+  `@livekit/react-native-webrtc` + Expo plugins) but only the Audio Test
+  spike imports them (`mobile/lib/voice.native.ts`, never shared/web
+  code): the Home call button stays SIMULATED and web preview still
+  bundles without them.
 
 ## Compatibility decisions (locked for this milestone)
 
@@ -46,8 +50,9 @@ dev-only voice-agent worker. No live call made; no device claim.
   + `@livekit/react-native-webrtc` 144.x + `@livekit/react-native-expo-plugin`)
   is documented for Expo development builds only — its dependencies and
   native build plugins are installed and configured in this milestone,
-  but application runtime code does not import or use LiveKit: the call
-  button stays SIMULATED and native/device behavior remains untested.
+  but only the Audio Test spike imports and uses LiveKit at runtime
+  (`mobile/lib/voice.native.ts`): the Home call button stays SIMULATED
+  and native/device behavior remains untested.
   Target is an Expo development build, NOT Expo Go.
 - **Backend:** Python `3.13.1` kept. Verified with concrete evidence (not just
   a version check): `livekit-agents==1.2.12` installs and
@@ -96,10 +101,12 @@ Copy `.env.example` to `mobile/.env` for local tweaks (never commit `.env`).
 Backend host/port are passed explicitly as `uvicorn` CLI flags below;
 no backend environment variables are consumed in this milestone.
 
-## Voice-trial setup (development only, uncommitted review draft)
+## Voice-trial setup (development only, local checkpoint review draft)
 
 One-human-to-one-AI trial path: `backend/voice_agent_dev.py` worker +
-mobile Audio Test screen with named dispatch `think-partner-dev`.
+mobile Audio Test screen, which requests named dispatch
+`think-partner-dev` in its token fetch on Start tap (verified offline;
+no live dispatch has ever run).
 The Home call button stays SIMULATED; native LiveKit imports stay in
 `mobile/lib/*.native.ts` (never in shared/web code).
 

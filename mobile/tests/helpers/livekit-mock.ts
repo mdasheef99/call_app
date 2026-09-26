@@ -183,14 +183,60 @@ const livekitClientMock = {
 export let lastFetchOptions: Record<string, unknown> | null = null;
 export let fetchCalls = 0;
 
+type AudioHold = { used: boolean; markEntered: () => void; gate: Promise<void> };
+let holdAudioConfigure: AudioHold | null = null;
+let holdAudioStart: AudioHold | null = null;
+
+function armAudioHold(set: (hold: AudioHold) => void): {
+  entered: Promise<void>;
+  release: () => void;
+} {
+  let markEntered!: () => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    markEntered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  set({ used: false, markEntered, gate });
+  return { entered, release };
+}
+
+/** Hold AudioSession.configureAudio (models a stalled audio setup step). */
+export function armHoldAudioConfigure(): { entered: Promise<void>; release: () => void } {
+  return armAudioHold((hold) => {
+    holdAudioConfigure = hold;
+  });
+}
+
+/** Hold AudioSession.startAudioSession (models a stalled audio setup step). */
+export function armHoldAudioStart(): { entered: Promise<void>; release: () => void } {
+  return armAudioHold((hold) => {
+    holdAudioStart = hold;
+  });
+}
+
 const reactNativeMock = {
   registerGlobals: () => undefined,
   AudioSession: {
     configureAudio: async (_options: unknown) => {
       audioSession.configureCalls += 1;
+      const hold = holdAudioConfigure;
+      if (hold && !hold.used) {
+        hold.used = true;
+        hold.markEntered();
+        await hold.gate;
+      }
     },
     startAudioSession: async () => {
       audioSession.startCalls += 1;
+      const hold = holdAudioStart;
+      if (hold && !hold.used) {
+        hold.used = true;
+        hold.markEntered();
+        await hold.gate;
+      }
     },
     stopAudioSession: async () => {
       audioSession.stopCalls += 1;
@@ -216,6 +262,8 @@ export function resetLiveKitMock(): void {
   FakeRoom.last = null;
   FakeRoom.holdConnect = null;
   holdFetch = null;
+  holdAudioConfigure = null;
+  holdAudioStart = null;
   lastFetchOptions = null;
   fetchCalls = 0;
   audioSession.configureCalls = 0;

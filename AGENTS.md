@@ -15,7 +15,7 @@ mic release. GitHub probe `35849621938` also assembled source `0c0751c`;
 its packaged APK had RECORD_AUDIO and no CAMERA. EAS artifact manifest,
 received audio, and any AI conversation remain UNTESTED, and every
 future build needs the owner's explicit approval. Voice-draft
-(uncommitted): prereq refusal before connect with `shutdown()` on
+(local checkpoints, ahead of remote, not merged): prereq refusal before connect with `shutdown()` on
 every refused job, explicit dispatch only (no single-job claim),
 120 s active deadline (setup awaits+wait; sync model build not
 preemptible; expiry decided by the timeout scope itself, so an SDK
@@ -60,9 +60,9 @@ npx expo export --platform web --output-dir dist-web
 Results on record (foundation, merged PR #1 — historical): pytest 5 passed;
 `tsc` exit 0; `expo-doctor` 18/18; web export 3 static routes; Playwright
 browser inspection 0 console errors.
-Voice-draft (uncommitted, offline only — latest dated counts 2026-09-26):
+Voice-draft (local checkpoints, offline only — latest dated counts 2026-09-26):
 backend pytest 42/42 (5 health + 37 voice-agent, per the 2026-09-26 HANDOFF
-checkpoint; worker untouched since, not rerun); mobile `npm test` 63/63;
+checkpoint; worker untouched since, not rerun); mobile `npm test` 78/78;
 `tsc` 0; sanitized web export 4 routes (synthetic token-server marker and
 agent name absent).
 LiveKit (`livekit-agents==1.2.12` imports on Python 3.13) is a separate

@@ -627,3 +627,304 @@ test("failed previous End blocks Start and retains ownership", async () => {
   assert.equal(endCalls, 1);
   await assert.rejects(session.end(), /boom-prev-end/);
 });
+
+test("dispose attempts a retained unconfirmed release instead of dropping it", async () => {
+  // Healthy End drops the live handle but retains recovery; a late
+  // mic-off failure then leaves release unconfirmed with no live
+  // handle. Screen exit must still attempt that retained release —
+  // dropping it would strand a possibly-live mic behind a dead screen.
+  let push!: (status: VoiceTestStatus) => void;
+  let endCalls = 0;
+  const unconfirmedStatus: VoiceTestStatus = {
+    state: "error",
+    muted: false,
+    participantCount: 0,
+    errorMessage: "Microphone release unconfirmed: boom",
+    micUnconfirmed: true,
+  };
+  const handle = {
+    async setMuted(_muted: boolean) {},
+    async end() {
+      endCalls += 1;
+    },
+  };
+  const { session } = makeSession(async (onStatus) => {
+    push = onStatus;
+    return handle as never;
+  });
+  await session.start();
+  await session.end();
+  assert.equal(endCalls, 1);
+  push(unconfirmedStatus);
+  session.dispose();
+  for (let i = 0; i < 50 && endCalls < 2; i++) await Promise.resolve();
+  assert.equal(endCalls, 2, "dispose retries the retained uncertain release");
+});
+
+test("background attempts a retained unconfirmed release instead of ignoring it", async () => {
+  // Same late-failure shape, but the app backgrounds instead of the
+  // screen exiting: the foreground-only test must attempt the retained
+  // release rather than returning early with no live handle.
+  let push!: (status: VoiceTestStatus) => void;
+  let endCalls = 0;
+  const unconfirmedStatus: VoiceTestStatus = {
+    state: "error",
+    muted: false,
+    participantCount: 0,
+    errorMessage: "Microphone release unconfirmed: boom",
+    micUnconfirmed: true,
+  };
+  const handle = {
+    async setMuted(_muted: boolean) {},
+    async end() {
+      endCalls += 1;
+    },
+  };
+  const scheduler = makeScheduler();
+  const appState = { current: "active" };
+  const { session, background } = makeSessionWithScheduler(
+    async (onStatus) => {
+      push = onStatus;
+      return handle as never;
+    },
+    scheduler,
+    appState
+  );
+  await session.start();
+  await session.end();
+  assert.equal(endCalls, 1);
+  push(unconfirmedStatus);
+  appState.current = "background";
+  background();
+  for (let i = 0; i < 50 && endCalls < 2; i++) await Promise.resolve();
+  assert.equal(endCalls, 2, "background retries the retained uncertain release");
+});
+
+test("background ends a live handle whose release is unconfirmed", async () => {
+  // A failed Start installs its recovery vehicle as the live handle
+  // with an unconfirmed status. Backgrounding must attempt End even
+  // though the state is error rather than connected/reconnecting —
+  // the mic may still be live.
+  let endCalls = 0;
+  const unconfirmedStatus: VoiceTestStatus = {
+    state: "error",
+    muted: false,
+    participantCount: 0,
+    errorMessage: "Microphone release unconfirmed: boom",
+    micUnconfirmed: true,
+  };
+  const handle = {
+    async setMuted(_muted: boolean) {},
+    async end() {
+      endCalls += 1;
+    },
+  };
+  const scheduler = makeScheduler();
+  const appState = { current: "active" };
+  const { session, background } = makeSessionWithScheduler(
+    async (onStatus) => {
+      onStatus(unconfirmedStatus);
+      return handle as never;
+    },
+    scheduler,
+    appState
+  );
+  await session.start();
+  appState.current = "background";
+  background();
+  for (let i = 0; i < 50 && endCalls < 1; i++) await Promise.resolve();
+  assert.equal(endCalls, 1, "background ends the unconfirmed live handle");
+});
+
+test("waiting Start reports pending while an orphan is unresolved", async () => {
+  // A fresh tap that must wait for an orphaned Start is accepted but
+  // opens no room yet: the UI must show pending (with End) rather than
+  // the stale pre-tap status with no affordance.
+  const scheduler = makeScheduler();
+  const pending = deferred<VoiceTestHandle>();
+  const { handle } = makeHandle();
+  const { handle: handle2 } = makeHandle();
+  const statuses: VoiceTestStatus[] = [];
+  let calls = 0;
+  const appState = { current: "active" };
+  const { session, background } = makeSessionWithScheduler(
+    () => (calls++ === 0 ? pending.promise : Promise.resolve(handle2)),
+    scheduler,
+    appState,
+    (s) => {
+      statuses.push(s);
+    }
+  );
+  const first = session.start();
+  appState.current = "background";
+  background();
+  appState.current = "active";
+  const secondPromise = session.start(); // waits on the orphan
+  for (let i = 0; i < 50; i++) await Promise.resolve();
+  assert.equal(calls, 1, "no second room while the orphaned Start is unresolved");
+  assert.ok(
+    statuses.some((s) => s.state === "requesting"),
+    "waiting tap reports pending while the orphan is unresolved"
+  );
+  pending.resolve(handle);
+  assert.equal(await first, null, "orphaned Start resolves to null");
+  assert.equal(await secondPromise, handle2, "fresh tap proceeds after the orphan settles");
+  session.dispose();
+});
+
+test("End aborts a Start waiting on an unresolved orphan without opening a room", async () => {
+  // The orphaned native await never settles here: End must still abort
+  // the waiting tap promptly (no stuck busy) and never open a room.
+  const scheduler = makeScheduler();
+  const never = deferred<VoiceTestHandle>(); // never resolved
+  const { handle } = makeHandle();
+  let calls = 0;
+  const { session } = makeSessionWithScheduler(async () => {
+    calls += 1;
+    return (calls === 1 ? never.promise : Promise.resolve(handle)) as never;
+  }, scheduler);
+  const first = session.start();
+  await session.end(); // first becomes the unresolved orphan
+  const secondPromise = session.start(); // waits on it
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.equal(calls, 1, "no second room while the orphan is unresolved");
+  await session.end(); // must abort the wait promptly
+  const result = await Promise.race([
+    secondPromise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("STUCK: waiting Start never aborted")), 500)
+    ),
+  ]);
+  assert.equal(result, null, "aborted wait installs nothing");
+  assert.equal(calls, 1, "aborted wait never opened a room");
+  session.dispose();
+});
+
+test("watchdog aborts a Start waiting on an unresolved orphan", async () => {
+  // Same never-settling orphan, but the 90-second bound fires while
+  // waiting: the tap must abort without opening a room.
+  const scheduler = makeScheduler();
+  const never = deferred<VoiceTestHandle>(); // never resolved
+  const { handle } = makeHandle();
+  let calls = 0;
+  const { session } = makeSessionWithScheduler(async () => {
+    calls += 1;
+    return (calls === 1 ? never.promise : Promise.resolve(handle)) as never;
+  }, scheduler);
+  const first = session.start();
+  await session.end(); // first becomes the unresolved orphan
+  const secondPromise = session.start(); // waits on it
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.equal(calls, 1, "no second room while the orphan is unresolved");
+  scheduler.trigger(); // the bound elapses while waiting
+  const result = await Promise.race([
+    secondPromise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("STUCK: watchdog never aborted the wait")), 500)
+    ),
+  ]);
+  assert.equal(result, null, "expired wait installs nothing");
+  assert.equal(calls, 1, "expired wait never opened a room");
+  session.dispose();
+});
+
+test("watchdog releases a Start caller stalled on a never-settling native await", async () => {
+  // Event order: tap emits requesting, then stalls at token fetch;
+  // watchdog fires with the native await still unresolved.
+  // The caller must resolve (busy clears) with no room opened and no
+  // release implied — the mic was never published.
+  const scheduler = makeScheduler();
+  const never = deferred<VoiceTestHandle>();
+  const statuses: VoiceTestStatus[] = [];
+  const appState = { current: "active" };
+  let calls = 0;
+  const { session } = makeSessionWithScheduler(
+    async (onStatus) => {
+      calls += 1;
+      onStatus({ state: "requesting", muted: false, participantCount: 0, errorMessage: null });
+      return never.promise;
+    },
+    scheduler,
+    appState,
+    (s) => {
+      statuses.push(s);
+    }
+  );
+  let outcome = "pending";
+  let value: unknown = "unset";
+  void session.start().then(
+    (v) => {
+      outcome = "resolved";
+      value = v;
+    },
+    () => {
+      outcome = "rejected";
+    }
+  );
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.equal(outcome, "pending", "caller pends while the native await is stalled");
+  assert.equal(calls, 1);
+  scheduler.trigger(); // 90-second bound fires; native still stalled
+  for (let i = 0; i < 50; i++) await Promise.resolve();
+  assert.equal(outcome, "resolved", "watchdog-invalidated tap resolves instead of hanging caller busy");
+  assert.equal(value, null, "invalidated tap installs nothing");
+  assert.equal(calls, 1, "no room opened");
+  const last = statuses[statuses.length - 1];
+  assert.equal(last?.state, "error", "invalidated tap lands in a retryable state");
+  assert.ok(!last?.micUnconfirmed && !last?.cleanupFailed, "no release implied");
+  session.dispose();
+});
+
+test("watchdog on a tap parked on an orphan does not restore a stale requesting status", async () => {
+  // Event order: first tap emits requesting then stalls; watchdog #1
+  // orphans it; a second tap parks on the orphan (waiting synthetic);
+  // watchdog #2 fires with the orphan still unresolved. The parked tap
+  // must end in a retryable error — not a restored stale requesting
+  // status with a dead End — and never open a second room.
+  const scheduler = makeScheduler();
+  const never = deferred<VoiceTestHandle>();
+  const statuses: VoiceTestStatus[] = [];
+  const appState = { current: "active" };
+  let calls = 0;
+  const { session } = makeSessionWithScheduler(
+    async (onStatus) => {
+      calls += 1;
+      onStatus({ state: "requesting", muted: false, participantCount: 0, errorMessage: null });
+      return never.promise;
+    },
+    scheduler,
+    appState,
+    (s) => {
+      statuses.push(s);
+    }
+  );
+  const first = session.start();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  scheduler.trigger(); // watchdog #1 orphans the stalled first tap
+  // Bypass the screen busy-gate (direct session use, as in the other
+  // orphan-wait tests): a fresh tap while the orphan is unresolved.
+  const secondPromise = session.start();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.equal(calls, 1, "parked tap never reaches native while the orphan is unresolved");
+  assert.ok(
+    statuses.some((s) => s.errorMessage === "Waiting for previous session cleanup."),
+    "parked tap reports pending while waiting"
+  );
+  let secondOutcome = "pending";
+  let secondValue: unknown = "unset";
+  void secondPromise.then((v) => {
+    secondOutcome = "resolved";
+    secondValue = v;
+  });
+  scheduler.trigger(); // watchdog #2 fires while parked
+  for (let i = 0; i < 50; i++) await Promise.resolve();
+  assert.equal(secondOutcome, "resolved", "invalidated wait resolves");
+  assert.equal(secondValue, null, "expired wait installs nothing");
+  assert.equal(calls, 1, "expired wait never opened a room");
+  const last = statuses[statuses.length - 1];
+  assert.equal(last?.state, "error", "no stale requesting restore");
+  assert.equal(last?.errorMessage, "Start ended while pending; tap Start to retry.");
+  assert.ok(!last?.micUnconfirmed && !last?.cleanupFailed, "no release implied");
+  void first;
+  session.dispose();
+});

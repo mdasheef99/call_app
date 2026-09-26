@@ -4,7 +4,9 @@
  * (which resolves `voice.web.ts` instead) never sees them.
  *
  * Audio-only experiment: microphone publish + remote-audio playback.
- * No camera, video, recording, transcript, or AI-agent behavior.
+ * No camera, video, recording, transcript, or in-client AI logic.
+ * Start requests named agent dispatch (`agentName`), so a dev worker
+ * may join the room — no AI runs in the app itself.
  *
  * Credentials are minted on demand per Start via LiveKit Cloud's
  * development token server (already-installed `livekit-client`
@@ -98,6 +100,11 @@ export async function startVoiceTest(
   // may still be live, so terminal statuses must show the release as
   // unconfirmed instead of a false "off"/"ended".
   let releaseUnconfirmed = false;
+  // Set when fail()'s own room-disconnect attempt throws: the room may
+  // still be joined even though the mic is off, so the failed Start must
+  // hand back a recovery vehicle instead of stranding the room. Only read
+  // in the start-failure path below (fresh closure per Start).
+  let disconnectFailed = false;
   // participantCount 0 until Connected: no room exists during token mint
   // and audio setup, so a count of 1 would not be truthful.
   let status: VoiceTestStatus = baseStatus("requesting");
@@ -124,18 +131,27 @@ export async function startVoiceTest(
     try {
       await room.disconnect(true);
     } catch {
-      // Best effort: the room is unusable; report the original failure.
+      // Best effort, but never silent when it matters: if the room is
+      // still joined, only End retry can release it — record that so the
+      // catch below hands back a recovery vehicle instead of stranding it.
+      // Still report the original failure (never ended).
+      disconnectFailed = true;
     }
     try {
       await AudioSession.stopAudioSession();
     } catch {
       // Best effort: release whatever was started.
     }
+    // Recovery (either flag) means the terminal status advertises the
+    // cleanup retry; the mic flag is set only when mic-off actually threw,
+    //so a pure disconnect failure keeps the mic label truthfully off.
+    const recovery = releaseUnconfirmed || disconnectFailed;
     emit({
       ...baseStatus(state),
       participantCount: 0,
       errorMessage: releaseUnconfirmed ? `${message} (microphone release unconfirmed)` : message,
       ...(releaseUnconfirmed ? { micUnconfirmed: true } : {}),
+      ...(recovery ? { cleanupFailed: true } : {}),
     });
     throw error instanceof Error ? error : new Error(message);
   };
@@ -149,7 +165,16 @@ export async function startVoiceTest(
   // without overwriting it.
   let unexpectedDisconnect: Promise<void> | null = null;
   let unexpectedMicError: unknown = null;
+  // True once the unexpected-disconnect cleanup has fully run (terminal
+  // emitted). While an unexpected cleanup is still in flight, mic-off
+  // has not resolved yet, so a racing Start failure must keep the
+  // recovery vehicle instead of deciding on the still-false flags.
+  let unexpectedFinished = false;
   const emitUnexpectedStatus = () => {
+    // Recovery (either flag) keeps End retryable: the mic flag is set
+    // only when mic-off actually threw, so a pure disconnect failure
+    // keeps the mic label truthfully off while still blocking Start.
+    const recovery = unexpectedMicError != null || disconnectFailed;
     emit({
       ...baseStatus("error"),
       muted,
@@ -158,6 +183,7 @@ export async function startVoiceTest(
         ? `Disconnected unexpectedly. ${unconfirmedMessage(unexpectedMicError)}`
         : "Disconnected unexpectedly.",
       ...(unexpectedMicError ? { micUnconfirmed: true } : {}),
+      ...(recovery ? { cleanupFailed: true } : {}),
     });
   };
   const cleanupOnUnexpectedDisconnect = () => {
@@ -176,7 +202,11 @@ export async function startVoiceTest(
         try {
           await room.disconnect(true);
         } catch {
-          // Best effort: the transport is already down.
+          // Not silent when it matters: the room may still be joined
+          // even though the mic is off, so a Start racing this cleanup
+          // must resolve a recovery vehicle (see the catch below)
+          // instead of rejecting the room away with nothing to retry.
+          disconnectFailed = true;
         }
         try {
           await AudioSession.stopAudioSession();
@@ -185,6 +215,7 @@ export async function startVoiceTest(
         } finally {
           room.removeAllListeners();
         }
+        unexpectedFinished = true;
         emitUnexpectedStatus();
       })();
     }
@@ -194,6 +225,14 @@ export async function startVoiceTest(
   room
     .on(RoomEvent.Connected, () => {
       if (settled) return;
+      if (_shouldAbort?.()) {
+        // Invalidated while the connect was in flight (End, watchdog,
+        // background, disposal): the post-connect checks below reject
+        // and fail() tears the transient room down — never display a
+        // room status for a dead tap. fail()/cleanup terminals (with
+        // retry flags when uncertain) are untouched by this guard.
+        return;
+      }
       if (!published) {
         // Initial connection completes before the microphone publishes;
         // stay in `connecting` so the display never claims a live mic
@@ -206,10 +245,16 @@ export async function startVoiceTest(
     })
     .on(RoomEvent.Reconnecting, () => {
       if (settled) return;
+      // Same dead-tap guard as Connected above: never display a room
+      // status after invalidation.
+      if (_shouldAbort?.()) return;
       emit({ ...status, state: published ? "reconnecting" : "connecting", participantCount: count() });
     })
     .on(RoomEvent.Reconnected, () => {
       if (settled) return;
+      // Same dead-tap guard as Connected above: never display a room
+      // status after invalidation.
+      if (_shouldAbort?.()) return;
       emit({ ...status, state: published ? "connected" : "connecting", participantCount: count() });
     })
     .on(RoomEvent.ParticipantConnected, () => {
@@ -229,8 +274,8 @@ export async function startVoiceTest(
       void cleanupOnUnexpectedDisconnect();
     });
 
-  const runTeardown = (recover = false) =>
-    teardown(recover).catch((error: unknown) => {
+  const runTeardown = () =>
+    teardown().catch((error: unknown) => {
       // Report teardown failure honestly: when a mic-off attempt
       // threw, the microphone may still be live, so show the
       // release as unconfirmed — never a false "ended" or "off".
@@ -318,22 +363,24 @@ export async function startVoiceTest(
     },
     async end(): Promise<void> {
       // Shared promise: concurrent calls run teardown exactly once —
-      // unless mic state is uncertain, in which case the next End makes
-      // a fresh mic-off attempt: directly for a first End on a recovery
-      // handle, or queued behind the settled promise afterwards
-      // (teardowns never run concurrently). Capturing the flag keeps
-      // concurrent Ends sharing that single queued attempt; a failed
-      // attempt re-arms it. A rejected cleanup without uncertainty
+      // unless the release is uncertain, in which case the next End makes
+      // a fresh attempt: directly for a first End (a recovery handle
+      // from a failed Start always needs its uncertain release
+      // attempted, whether the mic flag or only the disconnect flag is
+      // set), or queued behind the settled promise afterwards
+      // (teardowns never run concurrently). Capturing the mic flag keeps
+      // concurrent Ends sharing that single queued attempt; the
+      // disconnect flag stays set for teardown to consume and clear, so
+      // a second concurrent End may queue one extra no-op pass that
+      // resolves once the first succeeds. A failed attempt re-arms
+      // either flag. A rejected cleanup without uncertainty
       // clears ownership so a later End retries.
       if (!endPromise) {
-        endPromise = runTeardown(releaseUnconfirmed);
-      } else if (releaseUnconfirmed) {
+        endPromise = runTeardown();
+      } else if (releaseUnconfirmed || disconnectFailed) {
         releaseUnconfirmed = false;
         const prior = endPromise;
-        endPromise = prior.then(
-          () => runTeardown(true),
-          () => runTeardown(true)
-        );
+        endPromise = prior.then(runTeardown, runTeardown);
       }
       return endPromise;
     },
@@ -368,7 +415,27 @@ export async function startVoiceTest(
     await AudioSession.configureAudio({
       android: { audioTypeOptions: AndroidAudioTypePresets.communication },
     });
+    if (settled) {
+      // An unexpected disconnect landed during audio configure; its
+      // cleanup owns the terminal state, so reject instead of continuing.
+      throw new Error("Disconnected unexpectedly.");
+    }
+    if (_shouldAbort?.()) {
+      // Invalidated while audio configure was in flight; reject before
+      // starting audio or opening a room.
+      throw new Error("Start overtaken; session disposed.");
+    }
     await AudioSession.startAudioSession();
+    if (settled) {
+      // Same ownership as above: reject instead of opening a room behind
+      // a session that already ended.
+      throw new Error("Disconnected unexpectedly.");
+    }
+    if (_shouldAbort?.()) {
+      // Invalidated while audio start was in flight: reject before
+      // opening a room — a late result must never call room.connect.
+      throw new Error("Start overtaken; session disposed.");
+    }
     await room.connect(connection.serverUrl, connection.participantToken);
     if (settled) {
       // An unexpected disconnect landed mid-start; its cleanup owns the
@@ -414,19 +481,30 @@ export async function startVoiceTest(
     // `fail` rethrows when it owns the terminal state; when another path
     // (unexpected disconnect) already settled, it resolves quietly. Either
     // way a connection-time failure never resolves with a LIVE handle —
-    // but when the release is unconfirmed (a mic-off attempt threw and
-    // the mic may still be live), resolve with this room as a
-    // recovery-only vehicle instead of throwing it away: the session
-    // stashes it for the displayed End, whose teardown retries mic-off
-    // fresh. Without uncertainty, reject as before.
+    // but when the release is uncertain (a mic-off attempt threw and the
+    // mic may still be live, or the disconnect attempt threw and the room
+    // may still be joined), resolve with this room as a recovery-only
+    // vehicle instead of throwing it away: the session stashes it for the
+    // displayed End, whose teardown retries the uncertain release fresh.
+    // An unexpected-disconnect cleanup that is still in flight counts as
+    // uncertain too: its mic-off has not resolved yet, so deciding on
+    // the still-false flags here would discard the only retry vehicle
+    // just before the release is proven unconfirmed. Without uncertainty,
+    // reject as before.
     await fail(isPermissionDenial(error) ? "denied" : "error", error).catch(
       () => undefined
     );
-    if (releaseUnconfirmed) return handle;
+    if (
+      releaseUnconfirmed ||
+      disconnectFailed ||
+      (unexpectedDisconnect !== null && !unexpectedFinished)
+    ) {
+      return handle;
+    }
     throw error instanceof Error ? error : new Error(messageOf(error));
   }
 
-  async function teardown(recover = false): Promise<void> {
+  async function teardown(): Promise<void> {
     // Idempotent: an unexpectedly-disconnected session has nothing left
     // to release (its cleanup already disconnected and stopped the
     // session and owns the terminal state). End still waits for that
@@ -437,11 +515,12 @@ export async function startVoiceTest(
     if (settled) {
       if (unexpectedDisconnect) {
         await unexpectedDisconnect.catch(() => undefined);
-        if (unexpectedMicError || releaseUnconfirmed) {
-          // Recovery: the displayed End retries mic-off fresh — whether
-          // the cleanup's own mic-off failed or a later compensation
-          // did. Success clears the uncertainty (the plain disconnect
-          // error stands); failure keeps the warning and stays retryable.
+        if (unexpectedMicError || releaseUnconfirmed || disconnectFailed) {
+          // Recovery: the displayed End retries the uncertain release
+          // fresh — mic-off first (success clears the uncertainty),
+          // then the failed disconnect (the room may still be joined
+          // even though the mic is off). Either failure keeps the
+          // warning retryable instead of resolving while unproven.
           try {
             await room.localParticipant.setMicrophoneEnabled(false);
           } catch (error) {
@@ -453,15 +532,28 @@ export async function startVoiceTest(
           }
           unexpectedMicError = null;
           releaseUnconfirmed = false;
+          if (disconnectFailed) {
+            try {
+              await room.disconnect(true);
+            } catch (error) {
+              // disconnectFailed stays set so the next End queues a
+              // fresh attempt; the End wrapper below reports error +
+              // cleanupFailed (mic stays truthfully off) and keeps it
+              // retryable.
+              throw error instanceof Error ? error : new Error(messageOf(error));
+            }
+            disconnectFailed = false;
+          }
           emitUnexpectedStatus();
         }
         return;
       }
-      // Settled by a successful teardown, but a late mic-off failure
-      // landed afterwards: only a recovery End (recover=true) runs a
-      // fresh full attempt here — ordinary repeat Ends stay exactly-once
-      // no-ops below, preserving the single-teardown guarantee.
-      if (!recover) return;
+      // Settled without an unexpected disconnect means this is a recovery
+      // handle from a failed Start — the only reachable handle in that
+      // state — so run the full attempt below: End retries the uncertain
+      // release (mic-off and disconnect alike) instead of no-op'ing.
+      // Ordinary repeat Ends never reach here (the shared endPromise
+      // resolves them), preserving the single-teardown guarantee.
     }
     settled = true;
     // Fresh attempt: an earlier failed End may have set this; only this
