@@ -32,6 +32,9 @@ export function startVoiceTest(): Promise<VoiceTestHandle> {
  * microphone in the preview.
  */
 export function describeMicrophone(status: VoiceTestStatus): string {
+  // A failed mic-off leaves the microphone possibly live: report the
+  // release as unconfirmed rather than a false "off" (or a stale live).
+  if (status.micUnconfirmed) return "unconfirmed";
   if (status.state === "connected" || status.state === "reconnecting") {
     return status.muted ? "muted" : "live";
   }

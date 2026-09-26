@@ -43,6 +43,23 @@ test("microphone label: live/muted only when connected or reconnecting", () => {
   }
 });
 
+test("release-unconfirmed status never reports the mic as off", () => {
+  // A failed mic-off attempt must surface as unconfirmed in every
+  // mirror — never a false "off" (or a stale "live").
+  const unconfirmed = (state: VoiceTestState): VoiceTestStatus => ({
+    state,
+    muted: false,
+    participantCount: 0,
+    errorMessage: "Microphone release unconfirmed: boom-mic-off",
+    micUnconfirmed: true,
+  });
+  for (const state of states) {
+    assert.equal(describeMicrophone(unconfirmed(state)), "unconfirmed", `shared ${state}`);
+    assert.equal(describeNative(unconfirmed(state)), "unconfirmed", `native ${state}`);
+    assert.equal(describeWeb(unconfirmed(state)), "unconfirmed", `web ${state}`);
+  }
+});
+
 test("native and web mirrors agree with the shared contract", () => {
   for (const state of states) {
     for (const muted of [false, true]) {

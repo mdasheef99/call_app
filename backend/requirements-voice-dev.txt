@@ -1,0 +1,10 @@
+# Dev-only voice-trial worker: direct dependency pins (review draft).
+#
+# Install ONLY on top of the foundation lock so the 20 foundation pins
+# never drift:
+#   .\backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.lock -r backend\requirements-voice-dev.lock
+# Full transitive pins live in backend/requirements-voice-dev.lock
+# (snapshot of the verified local venv). LiveKit stays out of
+# backend/requirements.txt and backend/requirements.lock.
+livekit-agents==1.2.12
+livekit-plugins-google==1.2.9

@@ -38,6 +38,20 @@ export interface VoiceTestStatus {
   muted: boolean;
   participantCount: number;
   errorMessage: string | null;
+  /**
+   * Set only when a mic-off attempt threw: the microphone may still be
+   * live, so its release is unconfirmed — never display it as off.
+   * Absent/false everywhere else.
+   */
+  micUnconfirmed?: boolean;
+  /**
+   * Set on error statuses from a failed End/teardown while the handle is
+   * retained for retry: the screen offers End again and withholds Start.
+   * Independent of micUnconfirmed — a disconnect failure leaves the mic
+   * confirmed off (label stays "off") while cleanup still needs a retry.
+   * Absent/false everywhere else.
+   */
+  cleanupFailed?: boolean;
 }
 
 export interface VoiceTestHandle {
@@ -55,6 +69,9 @@ export interface VoiceTestHandle {
  * resolution; keep all three in sync.)
  */
 export function describeMicrophone(status: VoiceTestStatus): string {
+  // A failed mic-off leaves the microphone possibly live: report the
+  // release as unconfirmed rather than a false "off" (or a stale live).
+  if (status.micUnconfirmed) return "unconfirmed";
   if (status.state === "connected" || status.state === "reconnecting") {
     return status.muted ? "muted" : "live";
   }
@@ -66,7 +83,8 @@ export function getVoiceTestInitialStatus(): VoiceTestStatus {
 }
 
 export function startVoiceTest(
-  _onStatus: (status: VoiceTestStatus) => void
+  _onStatus: (status: VoiceTestStatus) => void,
+  _shouldAbort?: () => boolean
 ): Promise<VoiceTestHandle> {
   throw new Error("platform-specific module must implement startVoiceTest");
 }
