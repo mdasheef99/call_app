@@ -31,16 +31,25 @@ test("web screen has no import path to the env-bearing token-server config", () 
 });
 
 test("web/shared modules never import native-only LiveKit packages", () => {
-  // Match import statements only: comments may name the modules to
-  // explain the boundary (as lib/voice.ts does).
-  const importRe = /^\s*import\s+[^;]*$/gm;
+  // Match single-line import statements (including semicolon-terminated
+  // and side-effect forms); a separate whole-text check below covers
+  // multiline imports whose module clause sits on a later line.
+  // Comments may name the modules to explain the boundary (as
+  // lib/voice.ts does), so only import statements are matched.
+  const importLineRe = /^\s*import\b.*$/gm;
+  const forbidden = ["livekit-client", "@livekit/react-native", "react-native-webrtc"];
+  const fromRe = (mod: string) =>
+    new RegExp(`from\\s+["']${mod.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`);
   for (const file of ["lib/voice.ts", "lib/voice.web.ts", "lib/voice-session.ts", "lib/voice-session-base.ts", "lib/voice-session-start.ts", "lib/voice-shared-gate.ts"]) {
     const src = srcOf(...file.split("/"));
-    const imports = src.match(importRe) ?? [];
+    const imports = src.match(importLineRe) ?? [];
     for (const line of imports) {
-      assert.ok(!line.includes("livekit-client"), `${file} must not import livekit-client: ${line}`);
-      assert.ok(!line.includes("@livekit/react-native"), `${file} must not import @livekit/react-native: ${line}`);
-      assert.ok(!line.includes("react-native-webrtc"), `${file} must not import react-native-webrtc: ${line}`);
+      for (const mod of forbidden) {
+        assert.ok(!line.includes(mod), `${file} must not import ${mod}: ${line}`);
+      }
+    }
+    for (const mod of forbidden) {
+      assert.ok(!fromRe(mod).test(src), `${file} must not import ${mod} (including multiline)`);
     }
   }
 });
@@ -49,4 +58,28 @@ test("web platform module never touches the env-bearing config", () => {
   const src = srcOf("lib", "voice.web.ts");
   assert.ok(!src.includes("voice-config"), "voice.web.ts must not import voice-config");
   assert.ok(!src.includes("process.env"), "voice.web.ts must not read process.env");
+});
+
+test("import scanner detects semicolon-terminated, multiline, and side-effect forbidden imports", () => {
+  // Probe the scanner's pattern against synthetic forbidden imports: each
+  // form must be detected without editing any source file. Mirrors the
+  // guard above (line scan plus whole-text from-clause check).
+  const importLineRe = /^\s*import\b.*$/gm;
+  const forbidden = ["livekit-client", "@livekit/react-native", "react-native-webrtc"];
+  const escaped = (mod: string) => mod.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const detected = (sample: string) => {
+    const lines = sample.match(importLineRe) ?? [];
+    if (lines.some((line) => forbidden.some((mod) => line.includes(mod)))) return true;
+    return forbidden.some((mod) => new RegExp(`from\\s+["']${escaped(mod)}["']`).test(sample));
+  };
+  const samples = [
+    `import { Room } from "livekit-client";`,
+    `import {\n  Room\n} from "livekit-client";`,
+    `import "livekit-client";`,
+    `import "@livekit/react-native";`,
+    `import { AudioSession } from "react-native-webrtc";`,
+  ];
+  for (const sample of samples) {
+    assert.ok(detected(sample), `scanner must detect: ${JSON.stringify(sample)}`);
+  }
 });

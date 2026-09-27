@@ -6,9 +6,18 @@
  * stays non-blocking, and a failed release stays retryable with truthful
  * status on the remounted screen.
  */
+import "./helpers/livekit-mock";
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import {
+  FakeRoom,
+  armHoldFetch,
+  flush,
+  resetLiveKitMock,
+} from "./helpers/livekit-mock";
+import { startVoiceTest } from "../lib/voice.native";
 import { VoiceTestSession, resetSharedVoiceGateForTests } from "../lib/voice-session";
+import { sharedGateState } from "../lib/voice-shared-gate";
 import { describeMicrophone } from "../lib/voice";
 import type { VoiceTestHandle, VoiceTestStatus } from "../lib/voice";
 
@@ -613,7 +622,7 @@ test("aborted wait still receives late cleanup failure; failed retry stays gated
   sessionB.dispose();
 });
 
-test("late result from a disposed screen cannot overwrite newer active status or touch a disposed screen", async () => {
+test("late result from a disposed screen cannot overwrite newer active status and reaches no disposed collector", async () => {
   let startCalls = 0;
   const release = deferred<void>();
   let endCallsA = 0;
@@ -683,7 +692,10 @@ test("late result from a disposed screen cannot overwrite newer active status or
   assert.ok(!stillB?.micUnconfirmed && !stillB?.cleanupFailed, "no stale flags leak into B");
   await sessionB.setMuted(false);
 
-  // A disposed screen receives nothing further either.
+  // A disposed session's own collector stays silent: nothing references it
+  // after dispose (listener removed), so a late emission on another dead
+  // callback adds nothing here by construction — the live-session
+  // isolation above is the asserted behavior.
   const statusesD: VoiceTestStatus[] = [];
   const sessionD = makeSession(
     async () => {
@@ -778,5 +790,314 @@ test("aborted wait keeps conservative Waiting display while the live End is held
 
   await sessionB.start();
   assert.equal(startCalls, 2, "exactly one new room after release");
+  sessionB.dispose();
+});
+
+test("disposed screen's late mic failure keeps remounted Start gated until shared End recovers", async () => {
+  // Exact sequence: A End succeeds and A is disposed, then a held Unmute
+  // completes late with a failing mic-off compensation. The old mic is
+  // effectively live with no local retry left, so a remounted B must fail
+  // closed (truthful uncertainty, no room) until a shared End recovers it.
+  resetLiveKitMock();
+  const statusesA: VoiceTestStatus[] = [];
+  const sessionA = new VoiceTestSession(
+    {
+      startVoiceTest: (nativeOnStatus, shouldAbort) =>
+        startVoiceTest(
+          (status) => {
+            statusesA.push(status);
+            nativeOnStatus(status);
+          },
+          shouldAbort
+        ),
+      getAppState: () => "active",
+      addAppStateListener: () => () => undefined,
+    },
+    () => undefined
+  );
+  await sessionA.start();
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+
+  await sessionA.setMuted(true);
+  const hold = room.holdMicCall(3); // hold the unmute enable
+  const unmute = sessionA.setMuted(false);
+  for (let i = 0; i < 500 && room.micCalls.length < 3; i++) await flush();
+  assert.ok(room.micCalls.length >= 3, "unmute enable entered");
+  room.failMicCall(5, new Error("boom-compensating-off")); // late compensation fails
+  await sessionA.end(); // healthy End: handle dropped, recovery retained
+  sessionA.dispose();
+  hold.release(); // unmute resolves late behind End+dispose
+  await assert.rejects(unmute, /unconfirmed/i);
+  for (let i = 0; i < 50; i++) await flush();
+
+  const lastA = statusesA[statusesA.length - 1];
+  assert.equal(lastA?.micUnconfirmed, true, "disposed screen shows release unconfirmed");
+  assert.equal(room.micEffective, true, "old mic still effectively live");
+
+  let startCalls = 0;
+  const statusesB: VoiceTestStatus[] = [];
+  const sessionB = makeSession(
+    async () => {
+      startCalls += 1;
+      const { handle } = makeHandle();
+      return handle;
+    },
+    (s) => {
+      statusesB.push(s);
+    }
+  );
+  const blocked = statusesB[statusesB.length - 1];
+  assert.equal(blocked?.state, "error", "remounted screen shows actionable error");
+  assert.equal(blocked?.micUnconfirmed, true, "mic shown unconfirmed, never off");
+  assert.equal(blocked?.cleanupFailed, true, "End retry advertised");
+  assert.equal(sharedGateState.recovery !== null, true, "shared retry vehicle retained");
+  await assert.rejects(sessionB.start(), /unconfirmed/i, "Start gated while release uncertain");
+  assert.equal(startCalls, 0, "gated Start opens no room behind a live mic");
+
+  await sessionB.end(); // shared retry: fresh mic-off attempt on the old room
+  assert.equal(room.micEffective, false, "retry released the old mic");
+  const recovered = statusesB[statusesB.length - 1];
+  assert.equal(recovered?.state, "ended", "successful retry lands ended");
+  await sessionB.start();
+  assert.equal(startCalls, 1, "Start usable again after confirmed recovery");
+  sessionB.dispose();
+});
+
+test("remounted Start waits for a held old mute; its late failure gates until shared End recovers", async () => {
+  // Order 1 (failure): A End succeeds and A is disposed while its Unmute is
+  // still held. B taps Start before the old mute settles: it must park
+  // (no room behind the in-flight mute), then fail closed when the late
+  // compensation fails, until a shared End recovers the old room.
+  resetLiveKitMock();
+  const statusesA: VoiceTestStatus[] = [];
+  const sessionA = new VoiceTestSession(
+    {
+      startVoiceTest: (nativeOnStatus, shouldAbort) =>
+        startVoiceTest(
+          (status) => {
+            statusesA.push(status);
+            nativeOnStatus(status);
+          },
+          shouldAbort
+        ),
+      getAppState: () => "active",
+      addAppStateListener: () => () => undefined,
+    },
+    () => undefined
+  );
+  await sessionA.start();
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+
+  await sessionA.setMuted(true);
+  const hold = room.holdMicCall(3); // hold the unmute enable
+  const unmute = sessionA.setMuted(false);
+  for (let i = 0; i < 500 && room.micCalls.length < 3; i++) await flush();
+  assert.ok(room.micCalls.length >= 3, "unmute enable entered");
+  room.failMicCall(5, new Error("boom-compensating-off"));
+  await sessionA.end();
+  sessionA.dispose();
+
+  let startCalls = 0;
+  const statusesB: VoiceTestStatus[] = [];
+  const sessionB = makeSession(
+    async () => {
+      startCalls += 1;
+      const { handle } = makeHandle();
+      return handle;
+    },
+    (s) => {
+      statusesB.push(s);
+    }
+  );
+  const secondPromise = sessionB.start();
+  for (let i = 0; i < 50; i++) await Promise.resolve();
+  assert.equal(startCalls, 0, "no room while the old mute is unresolved");
+  assert.ok(
+    statusesB.some((s) => s.state === "requesting"),
+    "waiting tap reports pending while the old mute is unresolved"
+  );
+
+  hold.release(); // late compensation fails behind End+dispose
+  await assert.rejects(unmute, /unconfirmed/i);
+  await assert.rejects(secondPromise, /unconfirmed/i, "late failure gates the parked Start");
+  assert.equal(startCalls, 0, "failed mute opens no room");
+  assert.equal(room.micEffective, true, "old mic still effectively live");
+  const blocked = statusesB[statusesB.length - 1];
+  assert.equal(blocked?.micUnconfirmed, true, "mic shown unconfirmed, never off");
+  assert.equal(blocked?.cleanupFailed, true, "End retry advertised");
+
+  await sessionB.end(); // shared retry releases the old room
+  assert.equal(room.micEffective, false, "retry released the old mic");
+  assert.equal(statusesB[statusesB.length - 1]?.state, "ended", "retry lands ended");
+  await sessionB.start();
+  assert.equal(startCalls, 1, "Start usable again after confirmed recovery");
+  sessionB.dispose();
+});
+
+test("remounted Start proceeds once a held old mute settles successfully", async () => {
+  // Order 1 (success): same hold, but the late compensation succeeds. B
+  // still waits while the mute is unresolved, then proceeds with the old
+  // mic truthfully off — no failure, no retry needed.
+  resetLiveKitMock();
+  const sessionA = new VoiceTestSession(
+    {
+      startVoiceTest: (nativeOnStatus, shouldAbort) =>
+        startVoiceTest(nativeOnStatus, shouldAbort),
+      getAppState: () => "active",
+      addAppStateListener: () => () => undefined,
+    },
+    () => undefined
+  );
+  await sessionA.start();
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+
+  await sessionA.setMuted(true);
+  const hold = room.holdMicCall(3);
+  const unmute = sessionA.setMuted(false);
+  for (let i = 0; i < 500 && room.micCalls.length < 3; i++) await flush();
+  assert.ok(room.micCalls.length >= 3, "unmute enable entered");
+  await sessionA.end();
+  sessionA.dispose();
+
+  let startCalls = 0;
+  const statusesB: VoiceTestStatus[] = [];
+  const sessionB = makeSession(
+    async () => {
+      startCalls += 1;
+      const { handle } = makeHandle();
+      return handle;
+    },
+    (s) => {
+      statusesB.push(s);
+    }
+  );
+  const secondPromise = sessionB.start();
+  for (let i = 0; i < 50; i++) await Promise.resolve();
+  assert.equal(startCalls, 0, "no room while the old mute is unresolved");
+
+  hold.release(); // compensation succeeds: mic ends off
+  await assert.rejects(unmute, /Session ended while changing mute/);
+  const freshHandle = await secondPromise;
+  assert.ok(freshHandle, "parked Start proceeds after the mute settles");
+  assert.equal(startCalls, 1, "exactly one new room, after mute settlement");
+  assert.equal(room.micEffective, false, "old mic truthfully off");
+  assert.ok(
+    statusesB.every((s) => !s.micUnconfirmed && !s.cleanupFailed),
+    "success claims no release problem"
+  );
+  sessionB.dispose();
+});
+
+test("failed late compensation while End held rejects End instead of reporting ended", async () => {
+  // Order 3: the Unmute compensation fails while End is still held, then
+  // End's own attempt succeeds. The success must not erase the newer
+  // failure: End rejects unconfirmed, Start stays gated, and a retry
+  // recovers. A stays mounted to isolate the erase from disposal.
+  resetLiveKitMock();
+  const statuses: VoiceTestStatus[] = [];
+  const session = new VoiceTestSession(
+    {
+      startVoiceTest: (nativeOnStatus, shouldAbort) =>
+        startVoiceTest(
+          (status) => {
+            statuses.push(status);
+            nativeOnStatus(status);
+          },
+          shouldAbort
+        ),
+      getAppState: () => "active",
+      addAppStateListener: () => () => undefined,
+    },
+    () => undefined
+  );
+  await session.start();
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+
+  await session.setMuted(true);
+  const holdMute = room.holdMicCall(3);
+  const unmute = session.setMuted(false);
+  for (let i = 0; i < 500 && room.micCalls.length < 3; i++) await flush();
+  assert.ok(room.micCalls.length >= 3, "unmute enable entered");
+  room.failMicCall(5, new Error("boom-compensating-off"));
+  const holdEnd = room.holdMicCall(4); // hold teardown mic-off: End stays held
+  const endPromise = session.end();
+  for (let i = 0; i < 500 && room.micCalls.length < 4; i++) await flush();
+  assert.ok(room.micCalls.length >= 4, "teardown mic-off entered");
+  holdMute.release(); // compensation fails FIRST, while End held
+  await assert.rejects(unmute, /unconfirmed/i);
+  holdEnd.release(); // End's own attempt succeeds AFTER the failure
+  await assert.rejects(endPromise, /unconfirmed/i, "End surfaces the newer failure, not success");
+
+  const failed = statuses[statuses.length - 1];
+  assert.equal(failed?.micUnconfirmed, true, "release shown unconfirmed, never ended");
+  assert.ok(
+    !statuses.some((s) => s.state === "ended"),
+    "no false ended after the failure"
+  );
+
+  await session.end(); // displayed-End retry makes a fresh mic-off attempt
+  await flush();
+  assert.equal(room.micEffective, false, "mic effectively off after retry");
+  assert.ok(!statuses[statuses.length - 1]?.micUnconfirmed, "retry clears the uncertainty");
+  await session.start();
+  assert.notEqual(FakeRoom.last, room, "a new room opened after recovery");
+  session.dispose();
+});
+
+test("aborted fetch with failed mic-off leaves no permanent block after late retry succeeds", async () => {
+  // Suspected regression: A starts with the token fetch held, A is
+  // disposed, the fetch releases (native Start aborts), the first mic-off
+  // attempt fails (provisional unconfirmed report with a recovery handle),
+  // then the late handle.end() retry succeeds. The success must clear its
+  // own provisional shared block so B can Start; a genuinely newer failure
+  // would re-block with its own vehicle.
+  resetLiveKitMock();
+  const statuses: VoiceTestStatus[] = [];
+  const sessionA = new VoiceTestSession(
+    {
+      startVoiceTest: (nativeOnStatus, shouldAbort) =>
+        startVoiceTest(
+          (status) => {
+            statuses.push(status);
+            nativeOnStatus(status);
+          },
+          shouldAbort
+        ),
+      getAppState: () => "active",
+      addAppStateListener: () => () => undefined,
+    },
+    () => undefined
+  );
+  const fetchHold = armHoldFetch();
+  const first = sessionA.start();
+  await fetchHold.entered;
+  sessionA.dispose(); // abort the pending native Start
+  const room = FakeRoom.last;
+  assert.ok(room, "room instance recorded");
+  room.failMicCall(1, new Error("boom-mic-off")); // fail()'s mic-off (publish never ran)
+  fetchHold.release(); // late token result arrives after dispose
+  assert.equal(await first, null, "aborted Start installs nothing");
+  for (let i = 0; i < 50; i++) await flush();
+
+  assert.ok(
+    statuses.some((s) => s.micUnconfirmed === true),
+    "provisional unconfirmed report surfaced"
+  );
+  assert.equal(room.micEffective, false, "late retry released the mic");
+  assert.equal(sharedGateState.micUnconfirmed, false, "provisional mic block cleared");
+  assert.equal(sharedGateState.cleanupIncomplete, false, "provisional cleanup block cleared");
+
+  let startCalls = 0;
+  const sessionB = makeSession(async () => {
+    startCalls += 1;
+    const { handle } = makeHandle();
+    return handle;
+  });
+  await sessionB.start();
+  assert.equal(startCalls, 1, "B opens exactly one room after proven release");
   sessionB.dispose();
 });

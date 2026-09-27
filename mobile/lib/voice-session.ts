@@ -51,6 +51,7 @@ import {
   sharedEndings,
   sharedGateState,
   sharedListeners,
+  sharedMutes,
 } from "./voice-shared-gate";
 import { VOICE_TEST_WATCHDOG_MS } from "./voice-session-base";
 import { VoiceSessionStarter } from "./voice-session-start";
@@ -66,7 +67,32 @@ export class VoiceTestSession extends VoiceSessionStarter {
     if (!handle) {
       throw new Error("No active session to mute.");
     }
-    await handle.setMuted(muted);
+    // Tracked so a remounted Start waits for an old in-flight mute to
+    // settle instead of opening a room behind it; removed on settlement
+    // (success or failure). End stays prompt — it never awaits this entry.
+    // The no-op catch attach avoids an unhandled rejection if the toggle
+    // later rejects after the caller was released by End/dispose.
+    const gate: Promise<void> = handle.setMuted(muted);
+    sharedMutes.add(gate);
+    const done = () => {
+      sharedMutes.delete(gate);
+      notifySharedSettled();
+    };
+    void gate.then(done, done);
+    try {
+      await gate;
+    } catch (error) {
+      if (error instanceof Error && /unconfirmed/i.test(error.message)) {
+        // Late mic failure (e.g. an Unmute compensation) with no local
+        // retry left once disposed: hold the shared gate with this room as
+        // the retry vehicle so a remount fails closed until End recovers it.
+        sharedGateState.micUnconfirmed = true;
+        sharedGateState.cleanupIncomplete = true;
+        sharedGateState.recovery = handle;
+        notifySharedSettled();
+      }
+      throw error;
+    }
   }
 
   /** End the session. Usable while a Start is still pending: the
@@ -230,6 +256,14 @@ export class VoiceTestSession extends VoiceSessionStarter {
       this.removeAppStateListener = null;
     }
     void this.end().catch(() => undefined);
+    // Preserve the recovery vehicle across the screen boundary: a mic-off
+    // failure can still land afterwards (late toggle compensation) when no
+    // local retry remains. Transferred only into an empty slot so another
+    // session's failed release is never clobbered; inert until shared flags
+    // are set, so healthy disposes change nothing.
+    if (this.recoveryHandle !== null && sharedGateState.recovery === null) {
+      sharedGateState.recovery = this.recoveryHandle;
+    }
     this.recoveryHandle = null;
     this.cleanupIncomplete = false;
   }

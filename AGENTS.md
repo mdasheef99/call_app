@@ -15,7 +15,7 @@ mic release. GitHub probe `35849621938` also assembled source `0c0751c`;
 its packaged APK had RECORD_AUDIO and no CAMERA. EAS artifact manifest,
 received audio, and any AI conversation remain UNTESTED, and every
 future build needs the owner's explicit approval. Voice-draft
-(local checkpoints, ahead of remote, not merged): prereq refusal before connect with `shutdown()` on
+(PR #5 and its worker merged into main): prereq refusal before connect with `shutdown()` on
 every refused job, explicit dispatch only (no single-job claim),
 120 s active deadline (setup awaits+wait; sync model build not
 preemptible; expiry decided by the timeout scope itself, so an SDK
@@ -28,11 +28,10 @@ session close even with room connected, session `CloseReason.ERROR`
 as failure (content-free reason+type, never a successful end),
 cancellation labeled cancelled with propagation, inner `TimeoutError`
 preserved as setup failure, single deletion owner (SDK auto-delete
-off, text input off), covered by offline tests (counts live only in
-the latest dated HANDOFF checkpoint, not duplicated here)
+off, text input off), covered by offline tests (counts in the section below)
 — no server-side or device claim.
-PR #5 is merged into main. The cross-session gate and voice-session
-extraction on `fix/cross-session-orphan-gate` are local and offline.
+The cross-session work on `fix/cross-session-orphan-gate` remains offline,
+separate from merged PR #5 (committed locally as `2a17b72`).
 Known limits: a never-settling native Start can block later screens
 until app restart; two simultaneously live session objects are not
 globally gated, although the current single-screen flow never creates
@@ -66,11 +65,15 @@ npx expo export --platform web --output-dir dist-web
 Results on record (foundation, merged PR #1 — historical): pytest 5 passed;
 `tsc` exit 0; `expo-doctor` 18/18; web export 3 static routes; Playwright
 browser inspection 0 console errors.
-Voice-draft (local checkpoints, offline only — latest dated counts 2026-09-26):
+Voice-draft (local checkpoints, offline only — historical checkpoint 2026-09-26):
 backend pytest 42/42 (5 health + 37 voice-agent, per the 2026-09-26 HANDOFF
-checkpoint; worker untouched since, not rerun); mobile `npm test` 78/78;
+checkpoint; worker untouched since, not rerun); mobile `npm test` 78/78
+(historical feature-branch checkpoint, superseded below);
 `tsc` 0; sanitized web export 4 routes (synthetic token-server marker and
 agent name absent).
+Current checkpoint 2026-09-27 (offline, `fix/cross-session-orphan-gate`):
+mobile `npm test` 96/96, `npx tsc --noEmit` clean, sanitized web export
+4 routes (marker and agent name absent).
 LiveKit (`livekit-agents==1.2.12` imports on Python 3.13) is absent from
 `backend/requirements.txt` / `backend/requirements.lock` (foundation-only);
 it is pinned separately in `backend/requirements-voice-dev.txt` /

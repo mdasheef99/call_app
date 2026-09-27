@@ -14,6 +14,7 @@ import {
   sharedEndings,
   sharedGateState,
   sharedListeners,
+  sharedMutes,
   sharedOrphans,
 } from "./voice-shared-gate";
 import type { SharedGateListener } from "./voice-shared-gate";
@@ -105,7 +106,7 @@ export abstract class VoiceSessionBase {
     sharedListeners.add(this.sharedEntry);
     if (sharedGateState.micUnconfirmed || sharedGateState.cleanupIncomplete) {
       this.surfaceSharedBlock();
-    } else if (sharedOrphans.size > 0 || sharedEndings.size > 0) {
+    } else if (sharedOrphans.size > 0 || sharedEndings.size > 0 || sharedMutes.size > 0) {
       const waiting: VoiceTestStatus = {
         state: "requesting",
         muted: false,
@@ -184,17 +185,17 @@ export abstract class VoiceSessionBase {
   }
 
   /**
-   * Wait until every orphan and in-flight release settles so no second
-   * room opens behind one. Includes cross-session orphans from disposed
-   * screens and shared live-End teardowns. Resolves true when the coast
-   * is clear (caller still re-checks generation, disposal, app state,
-   * and the release gates). Resolves false when this run itself is
-   * invalidated while waiting (End/watchdog/background/dispose) — even
-   * if an orphan never settles — so the tap ends promptly with nothing
-   * opened.
+   * Wait until every orphan, in-flight release, and in-flight mute settles
+   * so no second room opens behind one. Includes cross-session orphans
+   * from disposed screens, shared live-End teardowns, and old in-flight
+   * mutes. Resolves true when the coast is clear (caller still re-checks
+   * generation, disposal, app state, and the release gates). Resolves
+   * false when this run itself is invalidated while waiting
+   * (End/watchdog/background/dispose) — even if an orphan never
+   * settles — so the tap ends promptly with nothing opened.
    */
   protected waitForOrphans(generation: number): Promise<boolean> {
-    if (this.orphans.size === 0 && sharedOrphans.size === 0 && sharedEndings.size === 0) {
+    if (this.orphans.size === 0 && sharedOrphans.size === 0 && sharedEndings.size === 0 && sharedMutes.size === 0) {
       return Promise.resolve(true);
     }
     if (generation !== this.generation || this.disposed) {
@@ -213,6 +214,7 @@ export abstract class VoiceSessionBase {
       void Promise.allSettled([
         ...new Set([...this.orphans, ...sharedOrphans]),
         ...sharedEndings,
+        ...sharedMutes,
       ]).then(() => finish(true));
     });
   }
@@ -307,6 +309,7 @@ export abstract class VoiceSessionBase {
       st !== null &&
       sharedOrphans.size === 0 &&
       sharedEndings.size === 0 &&
+      sharedMutes.size === 0 &&
       (st.errorMessage === "Waiting for previous session cleanup." ||
         (st.state === "error" && st.cleanupFailed === true))
     ) {

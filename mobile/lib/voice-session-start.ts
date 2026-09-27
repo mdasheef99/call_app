@@ -8,8 +8,10 @@
  */
 import type { VoiceTestHandle, VoiceTestStatus } from "./voice";
 import {
+  notifySharedSettled,
   sharedEndings,
   sharedGateState,
+  sharedMutes,
   sharedOrphans,
 } from "./voice-shared-gate";
 import { VoiceSessionBase } from "./voice-session-base";
@@ -54,10 +56,10 @@ export abstract class VoiceSessionStarter extends VoiceSessionBase {
     this.armWatchdog();
     const run = (async (): Promise<VoiceTestHandle | null> => {
     const generation = this.generation;
-    if (this.orphans.size > 0 || sharedOrphans.size > 0 || sharedEndings.size > 0) {
+    if (this.orphans.size > 0 || sharedOrphans.size > 0 || sharedEndings.size > 0 || sharedMutes.size > 0) {
       // An invalidated native Start is still unresolved, its late cleanup
-      // unfinished, or a live release still in flight: do not open another
-      // room behind it. Every orphan settles to disposal (generation
+      // unfinished, a live release still in flight, or an old mute still
+      // in flight: do not open another room behind it. Every orphan settles to disposal (generation
       // mismatch), never to an install — then this run proceeds. Report
       // pending now so the UI shows End instead of the stale pre-tap
       // status with no affordance; the wait itself aborts promptly when
@@ -143,6 +145,16 @@ export abstract class VoiceSessionStarter extends VoiceSessionBase {
         (status) => {
           this.lastStatus = status;
           this.onStatus(status);
+          if (this.disposed && status.micUnconfirmed === true) {
+            // Late mic failure on a disposed screen (e.g. an Unmute
+            // compensation failing after End+dispose): no local retry
+            // remains, so hold the shared gate instead of letting a
+            // remounted screen open a room behind a live mic. The
+            // recovery vehicle transferred on dispose keeps End reachable.
+            sharedGateState.micUnconfirmed = true;
+            sharedGateState.cleanupIncomplete = true;
+            notifySharedSettled();
+          }
         },
         () =>
           this.disposed ||
@@ -176,8 +188,22 @@ export abstract class VoiceSessionStarter extends VoiceSessionBase {
       // Start opens behind it: a rejected end() is never proven release,
       // whether or not it carried the mic-unconfirmed flag. Mirrored
       // into the cross-session gate so a remounted screen fails closed too.
+      // Retain the late vehicle optimistically so a provisional shared
+      // block (mirrored from this room's own failure report) attributes to
+      // this cleanup; a genuinely newer failure reassigns the slot, and the
+      // success below only clears a block that still belongs to this room.
+      sharedGateState.recovery = handle;
       try {
         await handle.end();
+        // Success proves the release: clear a provisional block that belongs
+        // to this room. A newer failure's vehicle owns the slot instead, so
+        // its block (and End retry) survives a stale success — blocks are
+        // never cleared merely because an ended status arrived elsewhere.
+        if (sharedGateState.recovery === handle) {
+          sharedGateState.recovery = null;
+          sharedGateState.cleanupIncomplete = false;
+          sharedGateState.micUnconfirmed = false;
+        }
       } catch (error) {
         this.recoveryHandle = handle;
         this.cleanupIncomplete = true;
@@ -233,7 +259,9 @@ export abstract class VoiceSessionStarter extends VoiceSessionBase {
         const st = this.lastStatus;
         if (st !== null && (st.state === "requesting" || st.state === "connecting")) {
           const foreignSharedPending =
-            sharedEndings.size > 0 || [...sharedOrphans].some((p) => !this.orphans.has(p));
+            sharedEndings.size > 0 ||
+            sharedMutes.size > 0 ||
+            [...sharedOrphans].some((p) => !this.orphans.has(p));
           if (!foreignSharedPending) {
             const stopped: VoiceTestStatus = {
               state: "error",

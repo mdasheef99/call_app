@@ -45,6 +45,15 @@ export const sharedGateState: {
 export const sharedEndings = new Set<Promise<void>>();
 
 /**
+ * In-flight mute toggles shared across remounts. A remounted Start waits
+ * for an old in-flight mute to settle instead of opening a room behind
+ * it; entries remove themselves on settlement (success or failure), so
+ * End stays prompt — it never awaits them. A late mic failure keeps its
+ * shared fail-closed flags through the mute path below.
+ */
+export const sharedMutes = new Set<Promise<void>>();
+
+/**
  * Live remounted screens subscribed for shared release outcomes. A new
  * screen that never taps Start still needs the outcome: pending while a
  * release is held, actionable error on failure, startable idle on
@@ -71,5 +80,6 @@ export function resetSharedVoiceGateForTests(): void {
   sharedGateState.micUnconfirmed = false;
   sharedGateState.recovery = null;
   sharedEndings.clear();
+  sharedMutes.clear();
   sharedListeners.clear();
 }
