@@ -579,6 +579,15 @@ export async function startVoiceTest(
       }
     }
     if (micError) throw micError;
+    if (releaseUnconfirmed || unexpectedMicError != null) {
+      // A newer mic failure landed while this attempt ran (e.g. a late
+      // Unmute compensation): resolving "ended" here would erase it and
+      // strand a possibly-live mic with no retry. Fail instead so the
+      // release stays unconfirmed, Start stays gated, and End retries.
+      throw unexpectedMicError instanceof Error
+        ? unexpectedMicError
+        : new Error("Microphone release unconfirmed during teardown");
+    }
     emit({ ...baseStatus("ended"), muted });
   }
 

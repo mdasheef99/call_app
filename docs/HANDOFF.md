@@ -1,11 +1,14 @@
 # HANDOFF — Android first-device-build (APK 9f539e50 INSTALLED on LG Wing; one-person mic/mute/End observed 2026-09-24; received-audio/AI conversation still UNTESTED)
 
-Current checkpoint works on `feature/livekit-audio-spike` at `d1891ed`;
-`origin/main` is `ba4db339`. PR #2 merged at `15963c4` (historical EAS
-base, main CI passed). The voice-draft sections below marked UNCOMMITTED
-were uncommitted at the time of writing; as of this checkpoint they are
-committed locally on this branch (ahead of remote, not merged) — no push,
-no merge, no live claim.
+Current checkpoint 2026-09-27: PR #5 and its worker are merged into
+main (`f6eea6f`); the cross-session work on `fix/cross-session-orphan-gate`
+remains offline — branch check mobile `npm test` 96/96, `tsc` clean,
+sanitized web export 4 routes. The `feature/livekit-audio-spike`
+checkpoint at `d1891ed` below (with `origin/main` at `ba4db339`, PR #2
+merged, and the 78/78 count) is historical and preserved verbatim, as are
+the voice-draft sections marked UNCOMMITTED — the `no push, no merge`
+below described that old snapshot; PR #5 is merged and the current
+cross-session branch holds offline work separate from it. No live claim.
 WebRTC is pinned exact `144.1.2`; cloud Node is pinned `22.23.2`.
 Two EAS Android attempts are recorded: `5957da33` failed before the
 WebRTC correction (`:livekit_react-native:compileDebugKotlin` namespace
@@ -530,7 +533,8 @@ path (a racing Start resolves a recovery vehicle with
   terminal, with retry flags when uncertain. 2 more tests (late
   Connected after End during held connect; late Reconnecting/Reconnected
   after End while connect is in flight). No session/screen change.
-- Counts this pass (latest voice-draft; earlier dated sections are
+- Counts this pass (historical feature-branch checkpoint — superseded
+by the 96/96 count in the header; earlier dated sections are
 historical): mobile `npm test` 78/78, `npx tsc --noEmit` 0,
 sanitized web export 4 routes with the synthetic token-server marker
 and the agent name absent (dotenv loading disabled, client-env
@@ -577,6 +581,16 @@ same date.
   session) is not a proven safe retry: an offline fake with a held
   connect showed transient two-room overlap. Keep work offline; each live
   connection still needs separate explicit approval.
+- Cross-session gate + extraction checkpoint (local, offline, committed
+  locally ahead of remote on `fix/cross-session-orphan-gate`): PR #5 is merged into main. Holds
+  the shared cross-session gate, the `voice-session` extraction
+  (`voice-shared-gate.ts`, `voice-session-base.ts`,
+  `voice-session-start.ts`, each ≤350 lines), cross-session tests, and
+  the extended web-boundary guard. No device, LiveKit, worker, or Google
+  call. Known limits: a never-settling native Start can block later
+  screens until app restart; two simultaneously live session objects are
+  not globally gated, although the current single-screen flow never
+  creates that state.
 - Dev servers stopped after inspection; ports 8000/8081 free. Other running
   servers (port 8082, Bookconnect) belong to other work — untouched.
 - One broad `Stop-Process` on `python.exe` was used mid-task; future kills

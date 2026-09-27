@@ -8,7 +8,7 @@
  * before connection, and connected/"live" only after mic publish.
  */
 import "./helpers/livekit-mock";
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   FakeRoom,
@@ -23,7 +23,11 @@ import {
 } from "./helpers/livekit-mock";
 import { startVoiceTest } from "../lib/voice.native";
 import type { VoiceTestStatus } from "../lib/voice";
-import { VoiceTestSession } from "../lib/voice-session";
+import { VoiceTestSession, resetSharedVoiceGateForTests } from "../lib/voice-session";
+
+beforeEach(() => {
+  resetSharedVoiceGateForTests();
+});
 
 function makeLiveSession(onStatus: (status: VoiceTestStatus) => void) {
   return new VoiceTestSession(

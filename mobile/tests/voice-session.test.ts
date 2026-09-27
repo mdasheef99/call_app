@@ -4,10 +4,18 @@
  * exit, and End never blocked by an in-flight Mute, with teardown
  * shared across concurrent Ends.
  */
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { VoiceTestSession, VOICE_TEST_WATCHDOG_MS } from "../lib/voice-session";
+import {
+  VoiceTestSession,
+  VOICE_TEST_WATCHDOG_MS,
+  resetSharedVoiceGateForTests,
+} from "../lib/voice-session";
 import type { VoiceTestHandle, VoiceTestStatus } from "../lib/voice";
+
+beforeEach(() => {
+  resetSharedVoiceGateForTests();
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
