@@ -34,7 +34,7 @@ test("web/shared modules never import native-only LiveKit packages", () => {
   // Match import statements only: comments may name the modules to
   // explain the boundary (as lib/voice.ts does).
   const importRe = /^\s*import\s+[^;]*$/gm;
-  for (const file of ["lib/voice.ts", "lib/voice.web.ts", "lib/voice-session.ts"]) {
+  for (const file of ["lib/voice.ts", "lib/voice.web.ts", "lib/voice-session.ts", "lib/voice-session-base.ts", "lib/voice-session-start.ts", "lib/voice-shared-gate.ts"]) {
     const src = srcOf(...file.split("/"));
     const imports = src.match(importRe) ?? [];
     for (const line of imports) {

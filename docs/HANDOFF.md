@@ -577,6 +577,16 @@ same date.
   session) is not a proven safe retry: an offline fake with a held
   connect showed transient two-room overlap. Keep work offline; each live
   connection still needs separate explicit approval.
+- Cross-session gate + extraction checkpoint (local, offline, committed
+  locally ahead of remote on `fix/cross-session-orphan-gate`): PR #5 is merged into main. Holds
+  the shared cross-session gate, the `voice-session` extraction
+  (`voice-shared-gate.ts`, `voice-session-base.ts`,
+  `voice-session-start.ts`, each ≤350 lines), cross-session tests, and
+  the extended web-boundary guard. No device, LiveKit, worker, or Google
+  call. Known limits: a never-settling native Start can block later
+  screens until app restart; two simultaneously live session objects are
+  not globally gated, although the current single-screen flow never
+  creates that state.
 - Dev servers stopped after inspection; ports 8000/8081 free. Other running
   servers (port 8082, Bookconnect) belong to other work — untouched.
 - One broad `Stop-Process` on `python.exe` was used mid-task; future kills

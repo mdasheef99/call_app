@@ -31,6 +31,12 @@ preserved as setup failure, single deletion owner (SDK auto-delete
 off, text input off), covered by offline tests (counts live only in
 the latest dated HANDOFF checkpoint, not duplicated here)
 — no server-side or device claim.
+PR #5 is merged into main. The cross-session gate and voice-session
+extraction on `fix/cross-session-orphan-gate` are local and offline.
+Known limits: a never-settling native Start can block later screens
+until app restart; two simultaneously live session objects are not
+globally gated, although the current single-screen flow never creates
+that state.
 The call button stays SIMULATED UI state; native LiveKit code must never be
 imported into shared/web code. No auth, database, memory, or analytics.
 
