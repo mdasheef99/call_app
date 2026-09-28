@@ -1,10 +1,15 @@
 # AGENTS.md — working rules for this repo
 
-## Current milestone: on-device voice trial pending
+## Current milestone: silent AI reply under investigation
 
 Foundation (PR #1), the voice draft (PR #5), and cross-session safety work
 (PR #6) are merged. The Android development client is installed, but an
 end-to-end AI reply remains UNCONFIRMED. The 2026-09-28 device trial
+follow-up on checkpoint `62b8cf5` reached phone-plus-agent rooms twice;
+the owner heard no reply. All trial processes stopped, the authenticated
+room list is empty, and the phone microphone operation ended. See
+`docs/device-trial-2026-09-28-followup.md`; no further run is authorized.
+The earlier trial
 recorded a first-dispatch Windows plugin-import failure, followed by a
 second room with the phone and agent. Both sessions are CLOSED and the
 worker is stopped; another connection needs separate approval. The

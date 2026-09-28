@@ -1,5 +1,11 @@
 # HANDOFF — Android device trial (APK 9f539e50 installed; 2026-09-28 phone/agent room observed; AI reply UNCONFIRMED; offline corrections checkpointed locally, not pushed)
 
+Latest device follow-up 2026-09-28: source checkpoint `62b8cf5`, two
+phone-plus-agent calls, no audible reply reported. All trial processes
+stopped; room list empty; microphone operation ended. September usage
+now displays 181 participant minutes / 15 sessions. Full evidence and
+guard-coverage limits: [device-trial-2026-09-28-followup.md](device-trial-2026-09-28-followup.md).
+
 Current checkpoint 2026-09-28 (correction pass): PR #5 and PR #6 are
 merged; the source baseline is `main` at `da87a84`. The confirmed findings
 from the approved in-app trial below are corrected offline and locally
