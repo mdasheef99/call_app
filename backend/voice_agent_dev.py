@@ -48,6 +48,14 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
+from livekit.agents.types import APIConnectOptions
+from livekit import api as livekit_api
+
+from voice_connection_guard import allow_single_provider_connection
+from voice_provider_bootstrap import (
+    ensure_google_plugin_initialized,
+    is_google_plugin_registered,
+)
 
 logger = logging.getLogger("think-partner-dev")
 
@@ -84,6 +92,14 @@ REALTIME_VOICE = "Puck"
 
 GOOGLE_API_KEY_ENV = "GOOGLE_API_KEY"
 
+# The SDK's own error codes, so diagnostics can name a code only when it
+# is one the SDK defines (never an arbitrary value found on an error).
+_SDK_ERROR_CODES = frozenset(
+    value
+    for value in vars(livekit_api.twirp_client.ServerErrorCode).values()
+    if isinstance(value, str)
+)
+
 # Development call-duration bound for the later <=2-minute trial.
 # Active-job deadline covering setup awaits (connect, session start)
 # and the post-start wait: slow awaits are interrupted via
@@ -108,6 +124,13 @@ def check_trial_prerequisites() -> None:
     Runs BEFORE ``ctx.connect()`` so a misconfigured trial never
     appears in a room. Names only what is missing (plugin package
     and/or env-var name) — never values.
+
+    Importability is deliberately not enough: a Google plugin import
+    that fails off the main thread (the pinned SDK's
+    ``Plugin.register_plugin`` raises there) still leaves the
+    ``beta.realtime`` submodule cached, so a later import "succeeds"
+    while nothing is registered. The registration check is what keeps
+    that state from admitting a job.
     """
     missing = []
     try:
@@ -117,6 +140,12 @@ def check_trial_prerequisites() -> None:
         from livekit.plugins.google.beta import realtime as _realtime_check  # noqa: F401
     except ImportError:
         missing.append("livekit-plugins-google (1.2.x line)")
+    else:
+        if not is_google_plugin_registered():
+            missing.append(
+                "livekit-plugins-google registered on the main thread "
+                "(start the worker as `python voice_agent_dev.py dev`)"
+            )
     if not os.environ.get(GOOGLE_API_KEY_ENV):
         missing.append(GOOGLE_API_KEY_ENV)
     if missing:
@@ -159,10 +188,15 @@ def build_realtime_model():
             f"{GOOGLE_API_KEY_ENV} environment variable in the trial shell "
             "(dev-only key, never committed)."
         )
-    return google_realtime.RealtimeModel(
-        model=REALTIME_MODEL_ID,
-        voice=REALTIME_VOICE,
-        instructions=AGENT_INSTRUCTIONS,
+    return allow_single_provider_connection(
+        google_realtime.RealtimeModel(
+            model=REALTIME_MODEL_ID,
+            voice=REALTIME_VOICE,
+            instructions=AGENT_INSTRUCTIONS,
+            # First of the two no-automatic-retry guards: the pinned
+            # SDK consults this only when a connection attempt RAISES.
+            conn_options=APIConnectOptions(max_retry=0),
+        )
     )
 
 
@@ -203,6 +237,23 @@ async def _close_trial_session(session: AgentSession, room_name: str) -> None:
         logger.warning("session cleanup failed for room %s", room_name)
 
 
+def _deletion_error_diagnostic(error: BaseException) -> str:
+    """Content-free deletion-failure metadata for logs.
+
+    Returns the exception type name plus the SDK's error code, but only
+    when that code is one the SDK itself defines
+    (``livekit.api.twirp_client.ServerErrorCode``). Matching against the
+    recognized set — not against a token shape — is what keeps an
+    arbitrary or credential-shaped value on the same attribute out of
+    the logs. Never touches the exception message, traceback, or any
+    payload; unrecognized codes fall back to the type name alone.
+    """
+    code = getattr(error, "code", None)
+    if isinstance(code, str) and code in _SDK_ERROR_CODES:
+        return f"type={type(error).__name__} code={code}"
+    return f"type={type(error).__name__}"
+
+
 async def _delete_trial_room(ctx: JobContext, room_name: str) -> None:
     """Await room deletion on a bounded budget.
 
@@ -216,8 +267,12 @@ async def _delete_trial_room(ctx: JobContext, room_name: str) -> None:
         result = ctx.delete_room()
     except asyncio.CancelledError:
         raise
-    except Exception:
-        logger.warning("room deletion request failed for room %s", room_name)
+    except Exception as error:
+        logger.warning(
+            "room deletion request failed for room %s (%s)",
+            room_name,
+            _deletion_error_diagnostic(error),
+        )
         return
     try:
         if inspect.isawaitable(result):
@@ -226,8 +281,12 @@ async def _delete_trial_room(ctx: JobContext, room_name: str) -> None:
         logger.warning("room deletion timed out for room %s", room_name)
     except asyncio.CancelledError:
         raise
-    except Exception:
-        logger.warning("room deletion failed for room %s", room_name)
+    except Exception as error:
+        logger.warning(
+            "room deletion failed for room %s (%s)",
+            room_name,
+            _deletion_error_diagnostic(error),
+        )
 
 
 async def _finish_trial_call(
@@ -495,4 +554,17 @@ def build_worker_options() -> WorkerOptions:
 
 
 if __name__ == "__main__":
+    # Main-thread plugin import before any job thread starts: on
+    # Windows jobs run on threads where registration raises, so a
+    # lazy per-job import would fail the first job and poison the
+    # import cache for later ones. The result decides what the worker
+    # logs, and admission itself is enforced per job by
+    # check_trial_prerequisites(), so a plugin-absent environment
+    # still starts and every job refuses before connect.
+    if ensure_google_plugin_initialized():
+        logger.info("google plugin registered on the main thread")
+    else:
+        logger.warning(
+            "google plugin not ready; trial jobs will refuse before connect"
+        )
     cli.run_app(build_worker_options())

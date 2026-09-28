@@ -61,6 +61,6 @@ jobs:
       # Fail fast if voice deps are missing instead of silently skipping tests.
       - run: python -c "import livekit.agents; import livekit.plugins.google.beta.realtime"
       # Offline only: no credentials, worker, room, or Google call.
-      - run: python -m pytest backend/tests/test_voice_agent_dev.py -q
+      - run: python -m pytest backend/tests -q
         env:
           PYTHONPATH: backend
