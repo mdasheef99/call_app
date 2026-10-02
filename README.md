@@ -106,15 +106,25 @@ Copy `.env.example` to `mobile/.env` for local tweaks (never commit `.env`).
 Backend host/port are passed explicitly as `uvicorn` CLI flags below;
 no backend environment variables are consumed in this milestone.
 
-## Voice-trial setup (development only, local checkpoint review draft)
+## Voice-trial setup (development only)
 
 One-human-to-one-AI trial path: `backend/voice_agent_dev.py` worker +
 mobile Audio Test screen, which requests named dispatch
 `think-partner-dev` in its token fetch on Start tap. A speech-driven native
 conversation was observed on 2026-10-01; the Unmute report remains unresolved.
-The current cascade/admission/privacy corrections remain offline and uncommitted.
+PR #7's cascade/admission/privacy checkpoint is merged at `7d66d53`.
+The cascade remains prepared offline; its shutdown-cleanup retry is documented
+in the latest HANDOFF checkpoint.
 The Home call button stays SIMULATED; native LiveKit imports stay in
 `mobile/lib/*.native.ts` (never in shared/web code).
+
+The cascade registers a job shutdown callback before provider construction.
+It retains partial or completed owners, serializes close attempts, and retries
+only failed owners during SDK shutdown without creating another provider or
+deleting the room again. The callback requests cancellation after ten seconds;
+resistant cleanup can outlive that budget. Repeated failure is reported through
+the protected sink and still requires the approved operator process/PID stop.
+This does not establish provider termination, room closure or phone mic release.
 
 ```powershell
 # Trial worker deps (separate approval to install; never in requirements.lock)

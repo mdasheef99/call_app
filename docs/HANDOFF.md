@@ -1,4 +1,40 @@
-# HANDOFF — Speech-driven conversation observed; Unmute unresolved; reviewed checkpoint for hosted CI
+# HANDOFF — Speech-driven conversation observed; cascade cleanup correction offline
+
+Cleanup correction 2026-10-03 (SDD §§6/8/9/11; Spec P02/P12/§6):
+PR #7 is merged on `main` at `7d66d53`. This follow-up lives on
+`codex/cascade-cleanup-retry`. The actual cascade entrypoint now registers
+the supported 1.8.3 `JobContext.add_shutdown_callback` before provider
+construction. Its closure retains partial owners or the completed session;
+shutdown retries only failed closes. A factory lock serializes partial cleanup
+against concurrent shutdown; the existing session lock protects full cleanup.
+No provider is reconstructed and the shared lifecycle remains the sole room
+deletion owner. Exceptions/cancellation retain identity and protected error
+logs contain metadata only. Native/mobile, dependencies and secret files are
+unchanged. No worker, connection, phone action or Android build was run for
+this correction.
+
+RED: normal End and partial-construction failure each left zero recovery
+callbacks; the initial hook then allowed two concurrent closes on a held partial
+owner. GREEN after registration/serialization. Failure tests also caught an
+existing function-local logging import shadowing the callback's module import;
+removing that local import restored failure/cancellation/timeout propagation.
+Isolated retained contracts: **11/11**, 36.933 s, on the final source. Native
+full regression: **150 passed / 11 candidate-profile skips**, 525.79 s, existing
+Starlette warning. That run began before the candidate-only logging fix;
+the final candidate run covers it. Final native affected-boundary recheck:
+**29/29**, 9.75 s, after that fix. Whitespace checks passed; source `.pyc`
+count is zero (dependencies/runtime caches excluded). Both profiles deny outbound
+before SDK imports; the new cases fake provider constructors/RoomIO/close effects and use
+the real entrypoint/lifecycle/SDK callback registration. Independent Luna/max
+read-only source review found no blocker; it did not run tests.
+
+This supplies one SDK shutdown-phase retry, not a new mobile control channel.
+The ten-second wait requests cancellation; it cannot guarantee hard shutdown.
+Persistent failure still requires the separately approved operator PID stop.
+Provider stop, room closure and mic release remain live unknowns. Sarvam realtime
+access, Unmute reliability and D6 context correctness remain open gates. Browser
+UI, Android build and physical device: UNTESTED. Earlier checkpoints are dated
+history, including their uncommitted/draft/no-merge labels.
 
 PR-depth correction checkpoint 2026-10-02 (SDD §§8/9/11/13, Spec P12/§6/§8):
 the complete review of PR #7 at `70a3b06` found two reproduced defects.

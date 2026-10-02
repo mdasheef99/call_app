@@ -110,6 +110,7 @@ class CandidateContracts(unittest.IsolatedAsyncioTestCase):
 
     async def test_entrypoint_refusal_and_audio_only_setup_keep_single_cleanup(self):
         from livekit import rtc
+        from livekit.agents import JobContext
         from livekit.agents.voice.events import CloseEvent, CloseReason
         import voice_cascade_dev as dev
         calls, forwarded = [], []
@@ -117,7 +118,8 @@ class CandidateContracts(unittest.IsolatedAsyncioTestCase):
         room.name, room.isconnected = "contract-room", lambda: True
         ctx = SimpleNamespace(room=room, connect=AsyncMock(side_effect=lambda: calls.append("connect")),
                               delete_room=AsyncMock(side_effect=lambda: calls.append("delete")),
-                              shutdown=lambda reason: calls.append(reason))
+                              shutdown=lambda reason: calls.append(reason), _shutdown_callbacks=[])
+        ctx.add_shutdown_callback = lambda callback: JobContext.add_shutdown_callback(ctx, callback)
         with patch.dict(os.environ, {**KEYS, "GOOGLE_API_KEY": ""}, clear=True):
             with self.assertRaises(RuntimeError):
                 await dev.entrypoint(ctx, handlers=(self.sink,))
