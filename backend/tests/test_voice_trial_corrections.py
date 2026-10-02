@@ -73,6 +73,7 @@ def _install_google_realtime_stub(monkeypatch, captured):
 
 
 def _run_case(script, timeout_s=120):
+    script = "from tests.network_block import deny_outbound; deny_outbound()\n" + script
     env = dict(os.environ)
     env.pop("GOOGLE_API_KEY", None)
     proc = subprocess.run(
@@ -135,6 +136,8 @@ def test_connect_failure_makes_no_second_attempt():
         "from types import SimpleNamespace\n"
         "import voice_agent_dev as v\n"
         "class FakeSession:\n"
+        "    async def send_realtime_input(self, **kwargs):\n"
+        "        return None\n"
         "    async def send_client_content(self, turns=None, turn_complete=True):\n"
         "        raise RuntimeError('boom-send-established')\n"
         "    async def receive(self):\n"
@@ -193,6 +196,9 @@ COUNTER = [0]
 
 
 class FakeSession:
+    async def send_realtime_input(self, **kwargs):
+        return None
+
     async def send_client_content(self, turns=None, turn_complete=True):
         # Initial chat replay uses turn_complete=False and succeeds;
         # the established send path (via _msg_ch, turn_complete=True)
@@ -342,6 +348,9 @@ def test_connection_guard_permits_only_the_first_attempt():
             self.live = FakeLive()
             self._client = FakeClient(self.live)
 
+        def push_audio(self, frame):
+            pass
+
     class FakeModel:
         def __init__(self):
             self.sessions = []
@@ -354,7 +363,7 @@ def test_connection_guard_permits_only_the_first_attempt():
     model = allow_single_provider_connection(FakeModel())
     session = model.session()
     live = session._client.aio.live
-    assert live.connect() == "context-manager"
+    assert live.connect().context.context == "context-manager"
     assert session.live.calls == 1
     assert live.marker == "passthrough"
     assert session._client.other == "kept"

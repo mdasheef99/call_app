@@ -123,9 +123,16 @@ def test_driver_arms_before_start_and_adopts_a_later_dispatch():
     assert client.closed is True
 
 
-def test_driver_reports_worker_closure_separately_from_its_own_delete():
+def test_driver_reports_worker_closure_separately_from_its_own_delete(monkeypatch):
     # The worker closed the room before the cutoff: the guard verifies
     # closure from the listing and never spends a delete request.
+    from .test_trial_cutoff_guard import FakeClock
+    clock, run = FakeClock(), guard_run.CutoffGuard.run
+
+    async def deterministic_run(self, api, **kwargs):
+        return await run(self, api, clock=clock, sleep=clock.sleep, **kwargs)
+
+    monkeypatch.setattr(guard_run.CutoffGuard, "run", deterministic_run)
     with _worker_log(DISPATCH_LINE % "room-a") as log:
         client = FakeLiveKitClient([[], ["room-a"], ["room-a"], []])
         summary = asyncio.run(

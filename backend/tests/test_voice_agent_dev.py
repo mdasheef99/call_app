@@ -211,7 +211,11 @@ def test_worker_is_named_explicit_dispatch_only():
 
 
 def test_source_contains_no_recording_or_upload_wiring():
-    source = pathlib.Path(voice_agent_dev.__file__).read_text(encoding="utf-8")
+    directory = pathlib.Path(voice_agent_dev.__file__).parent
+    source = "\n".join((directory / name).read_text(encoding="utf-8") for name in (
+        "voice_agent_dev.py", "voice_trial_config.py", "voice_trial_cleanup.py",
+        "voice_trial_lifecycle.py",
+    ))
     for banned in (
         "egress",
         "Egress",

@@ -32,6 +32,7 @@ BACKEND_DIR = pathlib.Path(voice_agent_dev.__file__).parent
 
 def _run_case(script, timeout_s=120):
     """Run a fresh interpreter in backend/ with credentials scrubbed."""
+    script = "from tests.network_block import deny_outbound; deny_outbound()\n" + script
     env = dict(os.environ)
     env.pop("GOOGLE_API_KEY", None)
     proc = subprocess.run(
@@ -158,7 +159,7 @@ def test_startup_initializes_plugin_before_serving():
         "import voice_provider_bootstrap as b\n"
         "import voice_agent_dev as v\n"
         "order = []\n"
-        "def _spy(options):\n"
+        "def _spy(options, **kwargs):\n"
         "    order.append('run_app:' + options.agent_name)\n"
         "cli_mod.run_app = _spy\n"
         "b.ensure_google_plugin_initialized = lambda: order.append('ensure') or True\n"
@@ -167,6 +168,38 @@ def test_startup_initializes_plugin_before_serving():
     )
     values = _result_lines(proc)
     assert values["order"] == "ensure,run_app:think-partner-dev", values["order"]
+
+
+def test_default_dev_cli_keeps_bootstrap_in_job_serving_process():
+    # Exercise the real Click dev command and run_dev routing, stopping
+    # before Worker construction. A watcher child loses __main__ bootstrap.
+    proc = _run_case(
+        "import os, runpy, sys, threading\n"
+        "os.environ['GOOGLE_API_KEY'] = 'dummy-offline-key'\n"
+        "from livekit.agents.cli import _run\n"
+        "from livekit.agents.cli import watcher\n"
+        "def reject_watcher(*args, **kwargs):\n"
+        "    raise AssertionError('watcher would bypass main-thread bootstrap')\n"
+        "watcher.WatchServer = reject_watcher\n"
+        "def serve(args):\n"
+        "    import voice_agent_dev as v\n"
+        "    outcome = []\n"
+        "    def job():\n"
+        "        try:\n"
+        "            v.check_trial_prerequisites()\n"
+        "            outcome.append('ok')\n"
+        "        except Exception as error:\n"
+        "            outcome.append(type(error).__name__)\n"
+        "    t = threading.Thread(target=job); t.start(); t.join()\n"
+        "    print('RESULT thread=' + outcome[0])\n"
+        "    print('RESULT watch=' + str(args.watch))\n"
+        "_run.run_worker = serve\n"
+        "sys.argv = ['voice_agent_dev.py', 'dev']\n"
+        "runpy.run_module('voice_agent_dev', run_name='__main__')\n"
+    )
+    values = _result_lines(proc)
+    assert values["watch"] == "False"
+    assert values["thread"] == "ok"
 
 
 def test_unregistered_plugin_is_refused_before_connect():

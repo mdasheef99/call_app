@@ -1,14 +1,52 @@
 # AGENTS.md — working rules for this repo
 
-## Current milestone: silent AI reply under investigation
+## Current milestone: speech-driven conversation observed; Unmute report under investigation
+
+Latest 2026-10-01: owner heard replies and chatted with the AI. Worker
+records show seven completed provider turns and 108 returned audio chunks.
+Room cutoff deleted the room. Owner reported an Unmute error; exact text
+and timing relative to cutoff remain unconfirmed. See
+`docs/device-trial-2026-10-01-conversation.md`; older unresolved-conversation
+statements below are historical. No additional Start authorized.
+
+2026-10-01: two named dispatches failed Google prerequisite initialization
+before session startup. Windows `dev` hot reload bypasses the main-thread
+bootstrap in its serving child; the worker now defaults to
+`hot_reload=False`. Do not enable `--watch`. The failing task-owned worker
+and guard were stopped; offline verification is recorded in HANDOFF.
+The subsequent corrected-startup call opened Google and submitted audio,
+but returned no audio. Worker/guard stopped at owner request. The pinned
+audio wire form is under investigation; see the latest HANDOFF entry.
+An uncommitted per-connection PCM wire correction now matches Google's
+documented `audio` field and 16 kHz MIME type; offline evidence is in HANDOFF.
+Speech-driven replies remain unconfirmed. Worker/guard remain stopped.
+
+The latest approved trial (2026-09-30 local time) reached the named worker
+and opened a Google Live API connection after a process-local CA-bundle
+workaround. Non-silent phone audio reached the SDK send path, but zero
+audio chunks returned before the
+owner pressed End roughly 17 seconds after dispatch. The provider receive
+error followed the phone disconnect and is not established as the cause of
+silence. The room list is empty and all task-owned services stopped. The
+cutoff guard had expired before Start; the independent 60-second stop ran.
+See `docs/device-trial-2026-09-30-60s.md`. No further connection is authorized.
+The preceding PCM-level trial failed before worker join because this Windows
+worker could not read the native certificate store. Four phone-only rooms
+appeared, all CLOSED; see `docs/device-trial-2026-09-29-pcm-level.md`.
 
 Foundation (PR #1), the voice draft (PR #5), and cross-session safety work
-(PR #6) are merged. The Android development client is installed, but an
-end-to-end AI reply remains UNCONFIRMED. The 2026-09-28 device trial
-follow-up on checkpoint `62b8cf5` reached phone-plus-agent rooms twice;
-the owner heard no reply. All trial processes stopped, the authenticated
-room list is empty, and the phone microphone operation ended. See
-`docs/device-trial-2026-09-28-followup.md`; no further run is authorized.
+(PR #6) are merged. The Android development client is installed. The previous
+approved trial on 2026-09-29 used `2aa5b2d` plus existing diagnostics and a
+temporary operator greeting hook: one 23-second phone/agent room, 14
+returned audio chunks / 128,640 bytes, and a greeting heard on the phone.
+The owner then spoke and waited but heard no further reply; the provider
+returned no additional audio. A working speech-driven conversation remains
+UNCONFIRMED. Room CLOSED/empty and mic off were checked; all task-owned
+processes stopped. See `docs/device-trial-2026-09-29-greeting.md`.
+The earlier same-day silent trial is preserved separately in
+`docs/device-trial-2026-09-29-metadata.md`.
+The earlier 2026-09-28 follow-up remains recorded in
+`docs/device-trial-2026-09-28-followup.md`.
 The earlier trial
 recorded a first-dispatch Windows plugin-import failure, followed by a
 second room with the phone and agent. Both sessions are CLOSED and the
@@ -27,8 +65,9 @@ an APK for corrected source `0c0751c` and is INSTALLED on the LG Wing
 (dev-client launcher, Metro bundle, Home backend-ok, SIMULATED button
 verified). A one-person mic/mute/End cycle was observed with OS-level
 mic release. GitHub probe `35849621938` also assembled source `0c0751c`;
-its packaged APK had RECORD_AUDIO and no CAMERA. EAS artifact manifest,
-received audio, and any AI conversation remain UNTESTED, and every
+its packaged APK had RECORD_AUDIO and no CAMERA. EAS artifact manifest
+remains UNTESTED; fixed-greeting playback was observed on 2026-09-29,
+but a working speech-driven conversation remains UNCONFIRMED. Every
 future build needs the owner's explicit approval. Voice-draft
 (PR #5 and its worker merged into main): prereq refusal before connect with `shutdown()` on
 every refused job, explicit dispatch only (no single-job claim),

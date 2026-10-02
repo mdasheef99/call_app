@@ -11,7 +11,8 @@ seconds with ``max_retry`` already 0.
 
 The dev trial must not be able to dial the provider again by itself, so
 this guard caps the session at ONE connection: the first
-``live.connect()`` is passed through untouched, and any later attempt
+``live.connect()`` observes counters while retaining the provider session
+and delegating context cleanup, and any later attempt
 raises before a socket is opened. With ``max_retry=0`` the pinned SDK
 turns that into a terminal ``APIConnectionError`` instead of a redial.
 
@@ -29,6 +30,9 @@ or process-wide patching, and no installed file is modified.
 
 from __future__ import annotations
 
+from voice_provider_diagnostics import ProviderDiagnostics
+from voice_google_audio import audio_input_connection
+
 
 class ProviderReconnectBlocked(RuntimeError):
     """Raised instead of a second automatic provider connection."""
@@ -37,18 +41,26 @@ class ProviderReconnectBlocked(RuntimeError):
 class _SingleConnectLive:
     """``client.aio.live`` stand-in that permits one connect call."""
 
-    def __init__(self, live):
+    def __init__(self, live, diagnostics):
         self._live = live
+        self.diagnostics = diagnostics
         self.attempts = 0
 
     def connect(self, *args, **kwargs):
         self.attempts += 1
-        if self.attempts > 1:
-            raise ProviderReconnectBlocked(
-                "dev trial permits one provider connection; "
-                "an automatic reconnect was refused"
+        self.diagnostics.emit("connection_attempted")
+        try:
+            if self.attempts > 1:
+                raise ProviderReconnectBlocked(
+                    "dev trial permits one provider connection; "
+                    "an automatic reconnect was refused"
+                )
+            return audio_input_connection(
+                self.diagnostics.connection(self._live.connect(*args, **kwargs))
             )
-        return self._live.connect(*args, **kwargs)
+        except BaseException as error:
+            self.diagnostics.emit("connection_failed", error)
+            raise
 
     def __getattr__(self, name):
         return getattr(self._live, name)
@@ -88,8 +100,10 @@ def allow_single_provider_connection(model):
 
     def _guarded_session():
         session = create_session()
+        diagnostics = ProviderDiagnostics()
+        diagnostics.attach_input(session)
         session._client = _SingleConnectClient(
-            session._client, _SingleConnectLive(session._client.aio.live)
+            session._client, _SingleConnectLive(session._client.aio.live, diagnostics)
         )
         return session
 

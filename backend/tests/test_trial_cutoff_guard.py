@@ -141,6 +141,17 @@ def test_dispatch_log_yields_exact_owned_names():
     }
 
 
+def test_dispatch_json_keeps_escaped_names_and_rejects_untyped_fields():
+    import json
+    room = 'room-"quoted\\name'
+    payloads = [{"agent_name": "think-partner-dev", "room": room},
+                {"agent_name": "other-agent", "room_name": "foreign"},
+                {"agent_name": "think-partner-dev", "room_name": 42},
+                {"agent_name": "think-partner-dev", "room_name": ""}]
+    log = "\n".join("received job request " + json.dumps(value) for value in payloads)
+    assert owned_rooms_from_dispatch_log(log, "think-partner-dev") == {room}
+
+
 def test_owned_room_deleted_at_cutoff_and_verified():
     owned = {"room-a"}
     api = FakeRoomApi([[], ["room-a"], ["room-a"], ["room-a"]])

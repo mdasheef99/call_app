@@ -45,6 +45,7 @@ point for the real LiveKit client.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -89,6 +90,18 @@ def owned_rooms_from_dispatch_log(log_text: str, agent_name: str) -> set[str]:
     for line in log_text.splitlines():
         if "received job request" not in line:
             continue
+        start = line.find("{")
+        if start >= 0:
+            try:
+                fields, _ = json.JSONDecoder().raw_decode(line[start:])
+            except ValueError:
+                pass  # preserve the older non-JSON log format below
+            else:
+                if isinstance(fields, dict) and fields.get("agent_name") == agent_name:
+                    room = fields.get("room_name", fields.get("room"))
+                    if type(room) is str and room:
+                        owned.add(room)
+                continue
         agent_match = _DISPATCH_AGENT_RE.search(line)
         if agent_match is None or agent_match.group(1) != agent_name:
             continue
