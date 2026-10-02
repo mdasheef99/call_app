@@ -6,12 +6,13 @@ Keys/registration establish local prerequisites, never provider entitlement.
 import asyncio
 import importlib
 from importlib import metadata
+import logging
 import os
 import sys
 import threading
 
 from voice_cascade_privacy import CascadeLogPrivacy
-from voice_trial_config import GOOGLE_API_KEY_ENV
+from voice_trial_config import CLEANUP_TIMEOUT_S, GOOGLE_API_KEY_ENV
 
 PINS = {"livekit-agents": "1.8.3", "livekit-plugins-google": "1.8.3",
         "livekit-plugins-sarvam": "1.8.3", "google-genai": "2.13.0", "pydantic": "2.12.5"}
@@ -69,8 +70,8 @@ def check_trial_prerequisites() -> None:
     _require_registrations()
 
 
-async def build_session():
-    """Construct inside one running loop; release partial owners on failure."""
+async def build_session(*, register_cleanup=None):
+    """Retain partial/full owners in the job's shutdown cleanup (SDD §6)."""
     check_trial_prerequisites()
     from google.genai import types
     from livekit.agents import APIConnectOptions
@@ -79,6 +80,28 @@ async def build_session():
     from voice_cascade_session import CascadeSession, close_owned
 
     owners = []
+    session = None
+    cleanup_lock = asyncio.Lock()
+
+    async def close_remaining():
+        # SDK shutdown callbacks may run while construction cleanup is held.
+        async with cleanup_lock:
+            if session is None:
+                await close_owned(owners)
+            else:
+                await session.aclose()
+
+    async def retry_cleanup():
+        try:
+            await asyncio.wait_for(close_remaining(), CLEANUP_TIMEOUT_S)
+        except BaseException:
+            # The entrypoint protects the owned sink before this factory runs.
+            logging.getLogger("think-partner-dev").error(
+                "cascade shutdown cleanup incomplete", exc_info=True)
+            raise
+
+    if register_cleanup is not None:
+        register_cleanup(retry_cleanup)
     try:
         stt = sarvam.STTRealtime(api_key=os.environ["SARVAM_API_KEY"], language="auto",
                 mode="codemix", stream_type="balanced", endpointing="vad",
@@ -93,17 +116,17 @@ async def build_session():
                     retry_options=types.HttpRetryOptions(attempts=1)))
         owners.append(llm)
         no_retry = APIConnectOptions(max_retry=0)
-        return CascadeSession(stt=stt, llm=llm, tts=tts, vad=None,
+        session = CascadeSession(stt=stt, llm=llm, tts=tts, vad=None,
                 turn_handling={"turn_detection": "stt"}, conn_options=SessionConnectOptions(
                     stt_conn_options=no_retry, llm_conn_options=no_retry, tts_conn_options=no_retry,
                     max_unrecoverable_errors=0))
+        return session
     except BaseException:
         try:
-            await close_owned(owners)
+            await close_remaining()
         except asyncio.CancelledError:
             raise
         except BaseException as cleanup_error:
-            import logging
             logging.getLogger("think-partner-dev").error(
                 "cascade construction cleanup incomplete (%s)", type(cleanup_error).__name__)
         raise

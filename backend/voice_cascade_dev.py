@@ -24,7 +24,8 @@ async def entrypoint(ctx, *, handlers=(), time_limit_s=CALL_TIME_LIMIT_S) -> Non
     from voice_trial_lifecycle import run_trial
 
     await run_trial(ctx, check_prerequisites=config.check_trial_prerequisites,
-            build_session=config.build_session, build_agent=lambda: Agent(instructions=AGENT_INSTRUCTIONS),
+            build_session=lambda: config.build_session(register_cleanup=ctx.add_shutdown_callback),
+            build_agent=lambda: Agent(instructions=AGENT_INSTRUCTIONS),
             build_room_input_options=lambda: RoomInputOptions(audio_enabled=True, video_enabled=False,
                 text_enabled=False, close_on_disconnect=True, delete_room_on_close=False),
             build_room_output_options=lambda: RoomOutputOptions(audio_enabled=True,
