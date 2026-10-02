@@ -1,13 +1,14 @@
-# Call App — Voice Thinking Partner (foundation + voice-draft checkpoints)
+# Call App — Voice Thinking Partner (native voice merged; cascade prepared offline)
 
 Prototype spec v1.0.1 controls v1 scope. The committed foundation is docs,
 a minimal mobile UI shell, and a minimal backend. No auth, database, memory,
-or analytics. The voice draft is committed as local checkpoints on
-`feature/livekit-audio-spike` (ahead of remote, not merged, offline only,
-for independent review): a native LiveKit audio spike — mic publish,
-90-second watchdog, End during a pending Start, orphan gating, truthful
-mic/cleanup status with End retry — plus a dev-only voice-agent worker.
-No live call made; no device claim.
+or analytics. The voice draft is merged on `main` (PR #5 and PR #6): a native
+LiveKit audio spike — mic publish, 90-second watchdog, End during a pending
+Start, orphan gating, truthful mic/cleanup status with End retry — plus a
+dev-only voice-agent worker. The owner heard replies and chatted with the AI
+on 2026-10-01; the reported Unmute error remains unresolved. The separate
+Sarvam/Google/Sarvam cascade is prepared offline, without live validation.
+Every further connection needs separate owner approval (see `docs/HANDOFF.md`).
 
 ## What is in this milestone
 
@@ -29,7 +30,8 @@ No live call made; no device claim.
    artifact manifest remains UNTESTED. APK `9f539e50` is installed on the
    LG Wing (dev-client launcher, Metro bundle, Home backend-ok,
    SIMULATED button verified) and a one-person mic/mute/End cycle was
-   observed; received audio and any AI conversation remain UNTESTED.
+   observed. A speech-driven AI conversation was observed on 2026-10-01;
+   the Unmute report remains unresolved (see the dated device record).
    Every future build needs the owner's separate explicit approval.
 - `.env.example` — local-only settings template, no secrets.
 - Native audio dependencies are installed for the voice spike
@@ -52,7 +54,8 @@ No live call made; no device claim.
   native build plugins are installed and configured in this milestone,
   but only the Audio Test spike imports and uses LiveKit at runtime
   (`mobile/lib/voice.native.ts`): the Home call button stays SIMULATED
-  and native/device behavior remains untested.
+  and device observations are recorded by date in HANDOFF; lifecycle races
+  remain covered offline rather than established on hardware.
   Target is an Expo development build, NOT Expo Go.
 - **Backend:** Python `3.13.1` kept. Verified with concrete evidence (not just
   a version check): `livekit-agents==1.2.12` installs and
@@ -60,7 +63,9 @@ No live call made; no device claim.
   Committed `backend/requirements.txt` records the direct dependency pins
   and stays foundation-only (fastapi, uvicorn, pydantic, httpx, pytest);
   `backend/requirements.lock` is the fully pinned set used for installation
-  and CI. LiveKit stays out of both until the voice milestone.
+  and CI. LiveKit is pinned separately in `requirements-voice-dev.lock`.
+  The cascade uses its own incompatible `requirements-voice-cascade.lock`;
+  never install that profile into the native/foundation environment.
 - **Android toolchain mapping (for the chosen SDK 54 / RN 0.81 line):**
   compileSdk 36, targetSdk 36, Android Gradle Plugin 8.x (requires JDK 17),
   Gradle 8.10+, Node 20.19+ (we use 22.13.0). Android Studio ships a bundled
@@ -105,8 +110,9 @@ no backend environment variables are consumed in this milestone.
 
 One-human-to-one-AI trial path: `backend/voice_agent_dev.py` worker +
 mobile Audio Test screen, which requests named dispatch
-`think-partner-dev` in its token fetch on Start tap (verified offline;
-no live dispatch has ever run).
+`think-partner-dev` in its token fetch on Start tap. A speech-driven native
+conversation was observed on 2026-10-01; the Unmute report remains unresolved.
+The current cascade/admission/privacy corrections remain offline and uncommitted.
 The Home call button stays SIMULATED; native LiveKit imports stay in
 `mobile/lib/*.native.ts` (never in shared/web code).
 
@@ -119,9 +125,26 @@ Trial-shell variables (names only — values are never committed, never
 printed, never placed in the app):
 `GOOGLE_API_KEY` (Gemini API key),
 `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (worker creds).
-The worker refuses to join any room when plugin or key is missing
-(checked before connect, and every refused job still calls
-`ctx.shutdown()`); the worker is explicit-dispatch only with no
+Start the worker from inside `backend/`, as its own script:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe voice_agent_dev.py dev
+```
+
+Hot reload is disabled by default: its Windows child process bypasses the
+main-thread plugin bootstrap. Do not enable `--watch` for this trial worker.
+The pinned beta plugin's PCM sends are adapted per connection to Google's
+`audio` field with `audio/pcm;rate=16000`; the PCM bytes are unchanged.
+Offline wire-contract proof does not establish a live speech-driven reply.
+That form is required, not cosmetic: the LiveKit SDK refuses to register a
+plugin off the main thread, and on Windows jobs run on threads, so
+`voice_agent_dev.py` initializes the Google plugin on the main thread at
+startup, before any job thread exists. A job whose plugin is missing **or
+importable but unregistered** is refused before `ctx.connect()` and still
+finalizes with `ctx.shutdown()`, so a misconfigured trial never appears in a
+room. The worker refuses to join any room when plugin or key is missing;
+it is explicit-dispatch only with no
 concurrency claim. The 120-second deadline covers the active job
 only (setup awaits through wait; slow awaits are interrupted, but
 synchronous model construction runs to completion and is not
@@ -145,10 +168,69 @@ disabled, then `shutdown`). Total wall-clock can exceed 120 s by the
 cleanup budget; awaited deletion only proves the delete call
 completed and does not prove phone mic release. Text input is
 disabled (`text_enabled=False`) for this audio-only worker.
+Deletion failures are logged as exception type plus the SDK's own
+error code when the code is one the SDK defines, never a message,
+payload, or unrecognized value.
+
+### No automatic provider reconnect
+
+The trial may not dial Gemini again by itself, in any failure mode.
+Two independent guards, both offline-verified against the pinned
+wheels:
+
+- `conn_options=APIConnectOptions(max_retry=0)` bounds the path where a
+  connection attempt *raises*.
+- `backend/voice_connection_guard.py` caps the session at **one**
+  connection. This is the necessary second guard: the pinned SDK
+  swallows an *established* send/receive failure, asks for a restart,
+  and reconnects in a tight loop without ever consulting `max_retry`
+  (measured offline at 3,787 connect attempts in 1.5 s with
+  `max_retry` already 0). The guard permits the first connect and
+  refuses any later one before a socket is opened, so the SDK's own
+  `APIConnectionError` ends the session. It is attached to the single
+  model instance this worker builds — no class, module, or
+  process-wide patching, no installed file modified — and it relies on
+  `RealtimeSession._client` and the genai client's `aio.live`, which in
+  livekit-plugins-google 1.2.9 is read at exactly one place (the
+  `connect()` in `_main_task`). Any SDK upgrade must re-verify this.
+
 Run only with separate approvals for plugin install, provider key,
 worker creds, and the Start tap; each live connection needs the
 owner's explicit approval. Provider billing is separate from LiveKit
 allowance (see HANDOFF); no charge is implied by running offline tests.
+
+### Watching a trial room (operator tool, offline core)
+
+`backend/trial_cutoff_guard_run.py` arms the cutoff guard against the
+LiveKit SDK, so a trial room can be watched and, at the per-room
+cutoff, cleaned up. Run it **before** tapping Start; it snapshots the
+worker log's byte offset and adopts only dispatch records appended after
+arming. Earlier records cannot authorize deletion for this trial:
+
+```powershell
+# LIVEKIT_* must be in the trial shell, never on the command line
+.\backend\.venv\Scripts\python.exe backend\trial_cutoff_guard_run.py --log <worker-log>
+```
+
+Ownership comes only from exact dispatch records for the named worker,
+so other rooms are reported and never deleted. Keep this log append-only
+while armed. A changed file identity or an observed decrease in size
+stops the guard; stop the trial and use its approved exact-room cleanup.
+Closure is reported only
+from a successful room listing — a failed or timed-out request proves
+nothing — and the summary says whether a room closed on its own (worker
+cleanup) or after the guard's fallback cutoff delete. Every API call and
+poll sleep is capped to the remaining overall budget (never more than the
+per-call budget), the deadline is checked with fresh time, and ownership
+is re-read after each listing so a room dispatched mid-request stays
+monitored. One delete request is issued per owned room. Client shutdown
+has its own finite allowance and its outcome is reported as
+`client_close`; the exit code is 0 only when every owned room was
+verified closed AND `client_close` is `ok`. A budget is a request for
+cancellation, not a bound: a call that resists cancellation or never
+yields can outlive it and is not then reported as a timeout. No hard
+wall-clock guarantee is claimed against such code.
+`backend/trial_cutoff_guard.py` holds the offline core (fake adapter).
 
 ## How a physical phone reaches the local backend
 
@@ -197,8 +279,18 @@ Expo Go will NOT work for native audio — development build only.
 
 ## Verification status (this milestone)
 
-Tested code revision: `0c0751c`.
+Tested code revision: `0c0751c` (device/APK entries below); the backend
+voice-worker entries below are newer and name their own revision.
 
+- Backend voice worker, offline, 2026-09-28 (source baseline
+  `da87a84`): `python -m pytest backend/tests -q` → 92 passed. No worker,
+  room, Google, or LiveKit connection, no credentials, and no device were
+  used for this pass; the start-up ordering, plugin admission, single
+  provider connection, deletion diagnostics, and cutoff guard (including
+  its LiveKit adapter) are covered offline. Voice CI runs the same
+  `backend/tests` path. Mobile suites were not rerun for this pass, so
+  96/96 remains the 2026-09-27 historical count. Device trial and
+  received-audio/AI-reply status are recorded in `docs/HANDOFF.md`.
 - CI `35844379073` successful on `0c0751c`: backend pytest 5 passed;
   mobile `npm ci` + `tsc --noEmit` + web export passed.
 - Historical (foundation round at `9167a74`, preserved): `pytest

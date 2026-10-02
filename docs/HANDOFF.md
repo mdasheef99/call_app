@@ -1,14 +1,230 @@
-# HANDOFF — Android first-device-build (APK 9f539e50 INSTALLED on LG Wing; one-person mic/mute/End observed 2026-09-24; received-audio/AI conversation still UNTESTED)
+# HANDOFF — Speech-driven conversation observed; Unmute unresolved; reviewed checkpoint for hosted CI
 
-Current checkpoint 2026-09-27: PR #5 and its worker are merged into
-main (`f6eea6f`); the cross-session work on `fix/cross-session-orphan-gate`
-remains offline — branch check mobile `npm test` 96/96, `tsc` clean,
-sanitized web export 4 routes. The `feature/livekit-audio-spike`
+PR-depth correction checkpoint 2026-10-02 (SDD §§8/9/11/13, Spec P12/§6/§8):
+the complete review of PR #7 at `70a3b06` found two reproduced defects.
+Native SDK DEBUG error-close records bypassed privacy redaction; the cutoff
+driver could adopt historical dispatches from a reused log. The corrections
+now redact structured error extras while preserving original records/causes
+and legitimate dispatch metadata, and bind guard ownership to post-arming
+bytes of the same append-only log. Observed replacement/truncation stops
+the guard with client cleanup; the operator must stop the trial and execute
+its separately approved exact-room cleanup. No stop guarantee is inferred.
+
+RED: both SDK formatters leaked the canary, the driver deleted the historical
+room, and replacement/truncation went unreported. The initially empty-log
+truncation case also failed before its high-water check. GREEN: focused
+checks **18/18**; full backend **150 passed / 6 candidate-profile skips** in
+204.08 s, with the existing Starlette warning. Command: native Python `-B -m
+pytest -q -p no:cacheprovider backend/tests`, `PYTHONPATH=backend`, bytecode
+and plugin autoload disabled; conftest denies outbound before SDK imports.
+Production delta **42 added / 8 removed**; tests/helpers **143 added / 12
+removed**. Production modules are 137/218 lines. Whitespace checks passed;
+source `.pyc` count zero. Independent Luna/max READ-ONLY rereview found no
+blocking findings and passed its eight focused checks. Hosted CI must pass
+on the correction commit before merge. Browser UI, Android build and physical
+device: UNTESTED. Mobile, dependencies and secret files are untouched; no
+worker, live call, token, room or build was started. Cascade cleanup retry,
+Sarvam entitlement, Unmute and D6 remain separate open activation gates.
+
+Previous publication checkpoint 2026-10-02: independent Luna/max READ-ONLY review of the
+latest corrected boundaries returned **READY for checkpoint**, with no confirmed
+material blocker. The reviewer inspected source, pinned SDK and CI contracts;
+it did not rerun tests. Root reran native **142 passed / 6 candidate skips**,
+isolated candidate **6/6**, and mobile **100/100** plus typecheck. Sanitized web
+export produced four routes and zero synthetic token/agent/native-import hits.
+This checkpoint includes the earlier pending native/cascade work and its review
+corrections. Publication is for a draft PR and hosted checks, not a merge, new
+build or live trial. Hosted results belong to the PR checks; the local evidence
+and earlier uncommitted/no-push labels below describe their dated operations.
+
+Earlier offline checkpoint 2026-10-02 (SDD §§3/4/6/8/9/11/13): confirmed
+review corrections are implemented in the reviewed publication checkpoint. The controlled cascade
+launcher reserves one named job for its lifetime and now refuses SDK environment
+overrides of registration/admission. An intentional protected admission record
+keeps only agent/room metadata for the cutoff guard. Typed JSON parsing supports
+both SDK room-field names and escaped names; unrelated SDK payloads stay scrubbed.
+Native lifecycle failures log types without exception content. The installed
+Google/core SDK error filters forward fresh records, preserving original records,
+exceptions and cancellation. This does not protect arbitrary sinks/exporters.
+
+Six candidate contracts now live in `backend/tests/cascade_profile`; the new
+isolated lock retains 85 already-resolved runtime pins. A separate Windows CI
+job checks the profile before discovery; hosted execution remains UNTESTED.
+No packages were installed and existing native/foundation locks are unchanged.
+Fresh native suite: **142 passed / 6 candidate-profile skips**, 203.59 s, one
+existing Starlette warning. Candidate contracts: **6/6**, 23.811 s. Earlier
+composition/entrypoint/launcher harnesses rerun: **8/8, 9/9, 2/2**. Outbound
+denial precedes SDK imports. Initial regressions failed before fixes; two test
+fixture issues found by the full run were corrected (logging cache and clock).
+No actual SDK server startup, provider acceptance, room closure or playback
+is established by these offline checks. An initial focused rereview was blocked
+by its account usage limit; the later independent review above supersedes that
+availability limitation. Root performed the regression checks reported here.
+
+This correction pass: **53 added / 19 removed production lines**, **285 added /
+1 removed test lines**, **106 added / 1 removed dependency/CI lines**; baseline
+hashes validate the deltas. All edited production modules remain below 350 lines.
+Existing staging, branch/HEAD, mobile, installed dependencies and unrelated work
+are preserved. Source `.pyc`: zero. Browser UI, Android build and physical device:
+UNTESTED. No worker, live request, token, room, phone action, commit or push.
+Sarvam realtime access, Unmute and D6 remain open; no new call is authorized.
+The launcher still needs the operator-owned exact-room guard/PID stop; its
+timeouts request cancellation rather than guaranteeing release or a cost cap.
+Prior dated evidence is in `docs/voice-cascade-compatibility.md` §§12–15.
+
+Previous offline checkpoint 2026-10-02 (SDD §§5/6/9/10/11): native lifecycle
+extraction is complete and uncommitted on `codex/voice-trial-corrections`
+at unchanged HEAD `2aa5b2d`. The native worker moved from 570 to 229 lines;
+common configuration, cleanup and lifecycle are 26/117/258 lines (60 net
+new production lines). Native bootstrap, provider guards, PCM handling and
+entrypoint behavior are preserved. Baseline backend tests: 105/105; three
+new seam tests failed before extraction; final suite: 108/108 under network
+denial before SDK imports. Independent Luna/max review found no material
+preservation defect. This does not establish Agents 1.8.3 conformance;
+direct use of the re-exported private deletion helper retains its imported
+timeout default, while the production entrypoint forwards the current
+native cleanup budget. Staging and unrelated work are unchanged. No worker,
+provider request, phone action, build, commit or push was performed.
+Unmute, Sarvam access and D6 remain unresolved; cascade integration follows
+candidate AgentSession composition and log-privacy checks. Earlier entries
+below are dated evidence, not this pass's process-state observations.
+
+Latest 2026-10-01 trial: owner heard replies and held a speech-driven
+conversation. One dispatch; seven completed provider turns, 108 audio
+chunks / 1,388,174 bytes returned. The room cutoff deleted the room.
+Owner reported an error on Unmute and return to test/permission UI; timing
+and exact error remain unresolved, including whether cutoff caused it.
+See `docs/device-trial-2026-10-01-conversation.md`. Earlier silence claims
+below are historical. No further Start authorized; idle worker remains running.
+
+2026-10-01 startup correction (Specification §7.1 native-audio spike):
+the latest worker received two named dispatches but both failed in the
+Google prerequisite check before session startup. Windows `dev` hot reload
+serves jobs in a child process that bypasses the `__main__` plugin bootstrap.
+The worker now defaults to `hot_reload=False`; do not enable `--watch`.
+The failing task-owned worker and room guard were stopped. This correction
+is offline and uncommitted; it does not establish a speech-driven reply.
+Fresh offline verification: startup/voice-agent suites 45/45 passed with
+network denial before SDK imports; the real default CLI bypasses the
+watcher and its threaded prerequisite check succeeds. Diff check clean,
+project `.pyc` count zero. No new device call was made for this correction.
+
+Subsequent owner-run call on 2026-10-01: one dispatch, session started,
+Google connection opened, 402 completed sends / 643,200 bytes, zero
+returned audio chunks. Owner reported no reply. The task-owned worker
+and continuous room guard were then stopped at the owner's request.
+Offline investigation with network denial and the real Google serializer
+confirmed the pinned beta plugin sends `mediaChunks` + `audio/pcm`, while
+Google's current example uses `audio` + `audio/pcm;rate=16000` with identical
+PCM bytes. Automatic activity detection is enabled by default; no disabling
+configuration was found. The serialization difference is a compatibility
+lead, not proof of server rejection or intelligible speech. No audio-path
+fix or additional connection was made during this investigation.
+Reference: https://ai.google.dev/gemini-api/docs/live-api/capabilities
+
+2026-10-01 bounded audio compatibility correction (Specification §§6/7.1):
+`voice_google_audio.py` adapts the pinned plugin's PCM `media` sends to
+`audio`, adding `rate=16000` only to its bare PCM MIME type. It copies
+metadata, preserves PCM byte identity, passes other input messages through,
+and restores the send method before inner diagnostic cleanup. The existing
+one-connection guard installs this wrapper; diagnostics count either input
+field. SDK files, dependencies, mobile, and worker orchestration unchanged
+in this correction. Three regression tests failed before the fix. Changes
+are uncommitted; no worker startup or live connection authorized by this pass.
+Verification: affected suites initially 23 passed / 1 failed (an assertion
+on the old context-wrapper layout). Updated only that layout assertion;
+the guard and three wire tests then passed 4/4 on the final code. Existing
+privacy, cancellation, receive/cleanup, and reconnect cases passed in the
+broader run. No full-suite rerun claimed. Added production/helper code:
+39 lines, removed 2; new test file 81 lines plus 3 changed assertion lines
+across existing tests. Diff check clean; project `.pyc` count zero.
+
+Latest trial 2026-09-30 local time: one approved call reached the named
+worker and opened a Google Live API connection. Non-silent microphone audio
+reached the SDK send
+path (292 completed sends, 467,200 bytes), but no provider audio returned
+before the owner pressed End about 17 seconds after dispatch. The provider
+receive error followed the client-initiated disconnect, so it does not
+explain the earlier silence. The cutoff guard expired before Start; the
+independent 60-second stop ran. An authenticated check showed no active
+rooms. Post-call usage and OS mic state could not be checked directly;
+the owner reported mic off. See
+[device-trial-2026-09-30-60s.md](device-trial-2026-09-30-60s.md).
+No repeat connection is authorized.
+
+Previous trial 2026-09-29: a temporary PCM-level probe was prepared offline,
+but the approved phone run failed before worker join because the worker's
+Rustls TLS path could not access the Windows certificate store. Four
+phone-only sessions appeared, all CLOSED; no PCM/provider reading was made.
+Usage displayed 183 → 184 minutes, active rooms are zero, and all task-owned
+services stopped. See [device-trial-2026-09-29-pcm-level.md](device-trial-2026-09-29-pcm-level.md).
+That approval did not authorize a repeat connection.
+
+Previous device trial 2026-09-29: `2aa5b2d` plus existing diagnostics and a
+temporary operator greeting hook, one 23-second phone/agent room.
+Google returned 14 audio chunks / 128,640 bytes and the owner heard the
+greeting. The owner then spoke and waited but heard no further reply;
+no additional provider audio arrived. Speech-input/turn handling remains
+under investigation. Room CLOSED/empty and mic off checked; all task-owned
+processes stopped. September display: 182 → 183 participant minutes and
+18 → 19 sessions (rounded, not exact consumption). Evidence and limits:
+[device-trial-2026-09-29-greeting.md](device-trial-2026-09-29-greeting.md).
+The earlier same-day trial returned zero audio and is preserved separately:
+[device-trial-2026-09-29-metadata.md](device-trial-2026-09-29-metadata.md).
+The following 2026-09-28 checkpoint and older dated records are historical.
+
+Current checkpoint 2026-09-28 (correction pass): PR #5 and PR #6 are
+merged; the source baseline is `main` at `da87a84`. The confirmed findings
+from the approved in-app trial below are corrected offline and locally
+checkpointed on `codex/voice-trial-corrections` (not pushed). A follow-up
+offline review of that pass corrected four
+of its own defects before any live use:
+- main-thread Google plugin init (`backend/voice_provider_bootstrap.py`,
+  wired in `backend/voice_agent_dev.py` `__main__`) plus
+  **registration-gated admission**: a job is refused before
+  `ctx.connect()` when the plugin is missing *or* importable but
+  unregistered, which is the poisoned-cache state a failed off-main-
+  thread import leaves behind;
+- one provider connection per session
+  (`backend/voice_connection_guard.py`, plus
+  `conn_options max_retry=0` for the raising path). `max_retry=0` alone
+  is not a no-reconnect guarantee, so the second guard is the one that
+  holds; it relies on `RealtimeSession._client` and the genai client's
+  `aio.live` and must be re-verified on any SDK upgrade;
+- deletion diagnostics limited to exception type plus the SDK's own
+  error codes (an unrecognized value on the same attribute is dropped);
+- a corrected cutoff guard (`backend/trial_cutoff_guard.py`, exact
+  dispatch-name ownership, per-room deadlines) that verifies closure
+  only from a successful room listing, never reads a failed or timed-out
+  request as absence, keeps verifying after delayed disappearance and
+  after `not_found`, caps every API call and poll sleep to the remaining
+  overall budget, re-reads ownership after each listing so a room
+  dispatched mid-request stays monitored, and has an operator entry
+  point with a real-SDK adapter (`backend/trial_cutoff_guard_run.py`)
+  whose bounded client shutdown is REPORTED as `client_close` rather
+  than swallowed: exit 0 requires every owned room verified closed and
+  `client_close` `ok`. Each room's delete is clamped to the budget left
+  at that moment and no API call starts once it is gone. A budget is a
+  request for cancellation, not a bound: a call that resists
+  cancellation or never yields can outlive it and is not then reported
+  as a timeout. No hard wall-clock guarantee is claimed against such
+  code.
+Backend `pytest backend/tests` 92/92 (5 health + 37 voice-agent + 50,
+incl. fresh-subprocess real-plugin and real-SDK-boundary tests); voice
+CI now runs `backend/tests`. Mobile suites untouched (96/96 remains the
+2026-09-27 historical count). No worker, room, Google, or device run
+in this pass. The approved in-app trial encountered the Windows
+plugin-import error below, then a second phone/agent room started and
+closed. The owner could not confirm an AI reply. No further Start or
+worker restart is authorized. The 2026-09-28 trial record below is
+preserved verbatim except where marked corrected. The 2026-09-27 offline checkpoint remains
+mobile `npm test` 96/96, `tsc` clean, sanitized web export 4 routes;
+those suites were not rerun during the device trial. The `feature/livekit-audio-spike`
 checkpoint at `d1891ed` below (with `origin/main` at `ba4db339`, PR #2
 merged, and the 78/78 count) is historical and preserved verbatim, as are
 the voice-draft sections marked UNCOMMITTED — the `no push, no merge`
-below described that old snapshot; PR #5 is merged and the current
-cross-session branch holds offline work separate from it. No live claim.
+below described that old snapshot; PR #5 and the cross-session work are
+now merged. Older statements below about untested dispatch are historical.
 WebRTC is pinned exact `144.1.2`; cloud Node is pinned `22.23.2`.
 Two EAS Android attempts are recorded: `5957da33` failed before the
 WebRTC correction (`:livekit_react-native:compileDebugKotlin` namespace
@@ -21,11 +237,157 @@ SIMULATED button in both states); a one-person mic/mute/End cycle was
 observed with OS-level mic release (see sections below). Received
 audio and any AI conversation remain UNTESTED — the observed 2026-09-24
 run was mic-only with no agent in the room, while the current Audio
-Test path requests named dispatch on Start tap (never run live).
+Test path requests named dispatch on Start tap (observed on 2026-09-28;
+an audible AI reply remains unconfirmed).
 Every future build needs the
 owner's separate explicit approval. CI `35844379073` is successful on
 `0c0751c`. Older dated build/spike records moved verbatim to
 `docs/HANDOFF-history-2026-09-24.md`.
+
+## Approved device trial — 2026-09-28, stopped
+
+Scope followed Specification v1.0.1 §§7.1/8 and the AGENTS free-plan gate:
+one proposed Start, human End by 45 seconds, maximum 60 seconds, no retry,
+with deletion of the test room approved as failure cleanup. The owner
+answered "ok" after this plan and confirmed the local Google key's project
+is Free tier. LiveKit Build and 179 current-month participant minutes were
+checked; the project switcher listed only `call_app`, and the authenticated
+room API reported zero rooms/participants before the trial. This does not
+establish an exact consolidated allowance or provider charge.
+
+- Named worker `AW_XUEQsUuW9uGS` registered at 16:24:09 IST. Its log recorded
+  two dispatch requests, at 16:25:07 and 16:25:26; the exact tap count is
+  unconfirmed. No agent-controlled Start or retry occurred.
+- First session `RM_mNpDBbjHUWGn`: Cloud shows CLOSED, 51-second room
+  duration, one participant. The worker failed before `ctx.connect()` at
+  `check_trial_prerequisites()` with
+  `RuntimeError: Plugins must be registered on the main thread`.
+- Second session `RM_rineJh9JAGuZ`: Cloud shows CLOSED, 12-second room
+  duration, two participants (`voice-spike` and agent
+  `agent-AJ_KkrqtApJWupC`). Worker logs record session start at 16:25:32
+  and end at 16:25:39. Both appear in the Publishers table; this is not
+  proof that the owner heard a response or that the Google live handshake
+  and inference completed. Owner report: first error, then two participants
+  while speaking; voice delivery uncertain. Mute/Unmute were not confirmed.
+- The independent room watcher was armed to request deletion at 55 seconds.
+  It stopped on two unexpected simultaneous rooms before capturing one;
+  its automatic cutoff was therefore NOT exercised. Immediate failure
+  cleanup used the worker's exact dispatched room names as its allowlist;
+  the API already reported zero rooms and zero participants, so no delete
+  was issued. Both CLOSED statuses were subsequently checked in Cloud.
+- Worker PID 3596 and its verified descendants (11588, 11940) were stopped.
+  ADB `appops` showed the app's RECORD_AUDIO operation completed after
+  11.384 seconds, with no running operation on repeated observation. The
+  owner's visual microphone-indicator confirmation remains pending.
+- Post-trial Usage still displayed 179 minutes and now 10 room sessions,
+  versus 8 before. The unchanged rounded minute display does NOT prove
+  zero consumption; exact participant-minute delta/provider usage unknown.
+- Offline fresh-process reproduction: a first Google plugin import in a
+  thread raises the same registration error; main-thread preload followed
+  by threaded import succeeds. Installed `livekit-agents` 1.2.12 defaults
+  to THREAD on Windows (`worker.py:123-127`), and plugin registration
+  requires the main thread (`plugin.py:31-33`). Corrected offline in
+  this pass (now locally checkpointed, see the checkpoint at the top):
+  `ensure_google_plugin_initialized()` loads the optional Google
+  plugin on the main thread before job threads start, retaining
+  missing-plugin refusal and foundation compatibility; admission now
+  also requires the plugin to be *registered*, so a job cannot slip
+  through on the poisoned import cache; `backend/voice_connection_guard.py`
+  caps the session at one provider connection, because the later probe
+  that showed an established-session receive failure reconnecting in a
+  tight loop regardless of `max_retry` (SDK-internal restart path) is
+  now refused at the connection boundary rather than only bounded by
+  the 120 s job deadline; deletion failures carry content-free
+  diagnostics limited to recognized SDK codes; the cutoff guard tracks
+  every owned room, verifies closure only from a successful listing,
+  and has an operator driver. The 2026-09-28 room watcher that failed
+  on two simultaneous rooms lived outside the repository; the in-repo
+  guard is the corrected replacement, and the old watcher's
+  extra-participant deletion heuristic was deliberately not carried
+  over (ownership is exact dispatch names only).
+
+Evidence: task logs and offline probe are in
+`C:/Users/user/AppData/Local/Temp/callapp-onecall-20260928-162147/`.
+The phone pre-Start screenshot shows idle/mic off/0 participants; the
+post-error screenshot shows Home. Backend `/health` and Metro returned
+HTTP 200; the fresh Android Metro bundle had 1,331 modules. Automated
+suites and Android APK build: UNTESTED this pass. Physical device:
+attempted, transport/agent join observed; audible AI reply unconfirmed.
+No commit, push, package install, provider-tier change, or key disclosure.
+
+## LiveKit quick reference — read-only audit 2026-09-28 (historical preflight snapshot)
+
+**State: BLOCKED.** This is a stored snapshot, not approval to connect.
+No LiveKit connection, worker, room, Google request, or Android build was
+started for this audit. Reuse these recorded facts without revisiting the
+dashboard; refresh only volatile usage and worker-registration state before
+a separately authorized call.
+
+- Project `call_app` (`p_53xwsdfy0vy`) is in European Union (Frankfurt).
+  The last dashboard plan check (2026-09-25) showed Build/free; the
+  2026-09-28 Overview did not display the plan. Current plan tier is
+  therefore not freshly reconfirmed.
+- The 2026-09-28 Overview showed 0 deployed agents and 0 concurrent agent
+  sessions, with no recently deployed agents. The Agents page was empty
+  and says self-hosted agents appear there too. The local process check
+  found no worker. This is a snapshot; another worker could register later.
+- The Usage page's Sep 1–Sep 28 local-time range showed 179 WebRTC
+  participant minutes, 8 room sessions, and no agent-session-minute or
+  concurrent-agent-session data. This is project usage, not an account-wide
+  remaining-balance meter. Build allowances are shared across the user's
+  free projects; exact account-wide remaining allowance is UNKNOWN. The
+  2026-09-25 project switcher listed only `call_app`, but that does not
+  establish today's account-wide totals.
+- Published Build monthly allowances are 1,000 agent-session minutes,
+  100,000 agent-observability events, 1,000 agent-recording minutes,
+  $2.50 LiveKit Inference credit, 5,000 WebRTC participant minutes, and
+  50 GB downstream transfer. Build allowances are hard caps, shared across
+  free projects, reset on the first of each month, and do not roll over.
+  Direct Google Gemini use is billed by Google and does not consume the
+  LiveKit Inference credit. Sources:
+  https://docs.livekit.io/deploy/admin/quotas-and-limits/ and
+  https://livekit.com/pricing.
+- Project Settings showed automatic room creation on participant join ON,
+  the development token server ON, and Agent observability Enabled. The
+  setting describes capture of traces, transcripts, and audio and warns
+  that observability data may be stored/processed in the US. No setting was
+  changed.
+- The phone requests named dispatch `think-partner-dev` only in its Start
+  path (`mobile/lib/voice.native.ts:399-403`); the worker uses that name
+  (`backend/voice_agent_dev.py:54-57,491-494`). LiveKit assigns named
+  workers only through explicit dispatch; a worker with no `agent_name`
+  automatically dispatches to every new room. Source:
+  https://docs.livekit.io/agents/server/agent-dispatch/.
+- The worker uses direct Google model `gemini-3.8-live`
+  (`backend/voice_agent_dev.py:82`) and requires `GOOGLE_API_KEY`
+  (`backend/voice_agent_dev.py:120-126`). A safe variable-presence check
+  found no key in process, user, or machine environment; no backend `.env`
+  exists. `mobile/.env` was not opened. Google model/account access is
+  UNVERIFIED; no Google request was made.
+- Google's published Gemini 3.8 Live Standard rates are $0.005/min audio
+  input and $0.018/min audio output on paid tier (Free Tier is listed at
+  no charge). A 90-second full-duplex audio-only calculation is $0.0345
+  paid-tier; this excludes text/context usage and is not a hard cost cap.
+  Live API audio context accumulates. Actual tier, access, and billed usage
+  remain unverified. Sources:
+  https://ai.google.dev/gemini-api/docs/pricing and
+  https://ai.google.dev/gemini-api/docs/live-api/best-practices.
+- Bounded stop/cleanup for a later, separately approved one-call trial:
+  use one Start with no retry; tap End once or let the 90-second phone
+  watchdog fire (`mobile/lib/voice-session-base.ts:29`). The worker's
+  active deadline is 120 seconds (`backend/voice_agent_dev.py:98`). On End
+  or deadline, it closes the session with a 10-second bound, issues one
+  room deletion with a 10-second bound, and calls `ctx.shutdown()`
+  (`backend/voice_agent_dev.py:102,194-224,249-255`). Verify the app ended
+  and the Android microphone privacy indicator is off; room deletion does
+  not prove microphone release. Stop any trial worker only by its recorded
+  PID after cleanup.
+- **Gate:** Remains BLOCKED by unknown account-wide remaining allowance,
+  no Google key in the checked environments and unverified model access,
+  no worker currently listed or running, and enabled audio/transcript
+  observability. Any actual LiveKit
+  connection still needs separate explicit owner approval. This audit is
+  not that approval.
 
 ## LiveKit Cloud account check and testing hold 2026-09-25
 

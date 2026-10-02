@@ -59,8 +59,26 @@ jobs:
       - run: pip install -r backend/requirements.lock -r backend/requirements-voice-dev.lock
       - run: pip check
       # Fail fast if voice deps are missing instead of silently skipping tests.
-      - run: python -c "import livekit.agents; import livekit.plugins.google.beta.realtime"
+      - run: python -B -c "import sys; sys.path.insert(0, 'backend'); from tests.network_block import deny_outbound; deny_outbound(); import livekit.agents; import livekit.plugins.google.beta.realtime"
       # Offline only: no credentials, worker, room, or Google call.
-      - run: python -m pytest backend/tests/test_voice_agent_dev.py -q
+      - run: python -m pytest backend/tests -q
         env:
           PYTHONPATH: backend
+
+  voice-cascade-profile:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: backend
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      # Deliberately separate from the incompatible native/foundation locks.
+      - run: python -m pip install -r backend/requirements-voice-cascade.lock
+      - run: python -m pip check
+      # Wrong/missing profile fails before unittest can skip it; no provider calls.
+      - run: python -B -c "from tests.network_block import deny_outbound; deny_outbound(); from voice_cascade_config import check_profile; check_profile()"
+      - run: python -B -m unittest discover -s backend/tests/cascade_profile -v

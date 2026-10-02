@@ -1,10 +1,63 @@
 # AGENTS.md — working rules for this repo
 
-## Current milestone: Android development-build setup
+## Current milestone: speech-driven conversation observed; Unmute report under investigation
 
-Foundation (PR #1) is merged. Current work prepares a local EAS Android
-development-build configuration, including native LiveKit dependencies for
-the later voice spike — no working voice. The Expo project is linked
+Latest 2026-10-01: owner heard replies and chatted with the AI. Worker
+records show seven completed provider turns and 108 returned audio chunks.
+Room cutoff deleted the room. Owner reported an Unmute error; exact text
+and timing relative to cutoff remain unconfirmed. See
+`docs/device-trial-2026-10-01-conversation.md`; older unresolved-conversation
+statements below are historical. No additional Start authorized.
+
+2026-10-01: two named dispatches failed Google prerequisite initialization
+before session startup. Windows `dev` hot reload bypasses the main-thread
+bootstrap in its serving child; the worker now defaults to
+`hot_reload=False`. Do not enable `--watch`. The failing task-owned worker
+and guard were stopped; offline verification is recorded in HANDOFF.
+The subsequent corrected-startup call opened Google and submitted audio,
+but returned no audio. Worker/guard stopped at owner request. The pinned
+audio wire form is under investigation; see the latest HANDOFF entry.
+An uncommitted per-connection PCM wire correction now matches Google's
+documented `audio` field and 16 kHz MIME type; offline evidence is in HANDOFF.
+Speech-driven replies remain unconfirmed. Worker/guard remain stopped.
+
+The latest approved trial (2026-09-30 local time) reached the named worker
+and opened a Google Live API connection after a process-local CA-bundle
+workaround. Non-silent phone audio reached the SDK send path, but zero
+audio chunks returned before the
+owner pressed End roughly 17 seconds after dispatch. The provider receive
+error followed the phone disconnect and is not established as the cause of
+silence. The room list is empty and all task-owned services stopped. The
+cutoff guard had expired before Start; the independent 60-second stop ran.
+See `docs/device-trial-2026-09-30-60s.md`. No further connection is authorized.
+The preceding PCM-level trial failed before worker join because this Windows
+worker could not read the native certificate store. Four phone-only rooms
+appeared, all CLOSED; see `docs/device-trial-2026-09-29-pcm-level.md`.
+
+Foundation (PR #1), the voice draft (PR #5), and cross-session safety work
+(PR #6) are merged. The Android development client is installed. The previous
+approved trial on 2026-09-29 used `2aa5b2d` plus existing diagnostics and a
+temporary operator greeting hook: one 23-second phone/agent room, 14
+returned audio chunks / 128,640 bytes, and a greeting heard on the phone.
+The owner then spoke and waited but heard no further reply; the provider
+returned no additional audio. A working speech-driven conversation remains
+UNCONFIRMED. Room CLOSED/empty and mic off were checked; all task-owned
+processes stopped. See `docs/device-trial-2026-09-29-greeting.md`.
+The earlier same-day silent trial is preserved separately in
+`docs/device-trial-2026-09-29-metadata.md`.
+The earlier 2026-09-28 follow-up remains recorded in
+`docs/device-trial-2026-09-28-followup.md`.
+The earlier trial
+recorded a first-dispatch Windows plugin-import failure, followed by a
+second room with the phone and agent. Both sessions are CLOSED and the
+worker is stopped; another connection needs separate approval. The
+offline correction pass for the confirmed findings is implemented but
+locally checkpointed on `codex/voice-trial-corrections` (not pushed;
+main-thread plugin init plus registration-gated admission,
+one provider connection per session, cutoff guard with an operator
+driver, deletion diagnostics limited to recognized SDK codes; backend
+pytest 92/92) — see the latest HANDOFF checkpoint. The Expo project is
+linked
 (`@mdasheef/call-app-foundation`); WebRTC is pinned exact `144.1.2` and
 cloud Node is pinned `22.23.2`. Two EAS Android attempts are recorded:
 `5957da33` failed before the WebRTC correction; `9f539e50` finished with
@@ -12,8 +65,9 @@ an APK for corrected source `0c0751c` and is INSTALLED on the LG Wing
 (dev-client launcher, Metro bundle, Home backend-ok, SIMULATED button
 verified). A one-person mic/mute/End cycle was observed with OS-level
 mic release. GitHub probe `35849621938` also assembled source `0c0751c`;
-its packaged APK had RECORD_AUDIO and no CAMERA. EAS artifact manifest,
-received audio, and any AI conversation remain UNTESTED, and every
+its packaged APK had RECORD_AUDIO and no CAMERA. EAS artifact manifest
+remains UNTESTED; fixed-greeting playback was observed on 2026-09-29,
+but a working speech-driven conversation remains UNCONFIRMED. Every
 future build needs the owner's explicit approval. Voice-draft
 (PR #5 and its worker merged into main): prereq refusal before connect with `shutdown()` on
 every refused job, explicit dispatch only (no single-job claim),
@@ -30,13 +84,13 @@ cancellation labeled cancelled with propagation, inner `TimeoutError`
 preserved as setup failure, single deletion owner (SDK auto-delete
 off, text input off), covered by offline tests (counts in the section below)
 — no server-side or device claim.
-The cross-session work on `fix/cross-session-orphan-gate` remains offline,
-separate from merged PR #5 (committed locally as `2a17b72`).
+Cross-session work (PR #6, merged on `main` at `da87a84`) has offline
+race-test evidence; the 2026-09-28 device trial did not exercise those races.
 Known limits: a never-settling native Start can block later screens
 until app restart; two simultaneously live session objects are not
 globally gated, although the current single-screen flow never creates
 that state.
-The call button stays SIMULATED UI state; native LiveKit code must never be
+The Home call button stays SIMULATED UI state; native LiveKit code must never be
 imported into shared/web code. No auth, database, memory, or analytics.
 
 ## Document precedence
@@ -71,9 +125,22 @@ checkpoint; worker untouched since, not rerun); mobile `npm test` 78/78
 (historical feature-branch checkpoint, superseded below);
 `tsc` 0; sanitized web export 4 routes (synthetic token-server marker and
 agent name absent).
-Current checkpoint 2026-09-27 (offline, `fix/cross-session-orphan-gate`):
+Current offline test checkpoint 2026-09-27 (PR #6, now merged):
 mobile `npm test` 96/96, `npx tsc --noEmit` clean, sanitized web export
 4 routes (marker and agent name absent).
+Offline correction checkpoint 2026-09-28 (local-only, backend only):
+`pytest backend/tests` 92/92 (5 health + 37 voice-agent + 50 covering
+main-thread provider init and registration-gated admission, start-up
+ordering, the one-connection provider policy, deletion diagnostics, and
+the cutoff guard with its LiveKit adapter/driver, including ownership
+gained during a listing, budget-capped calls, polls and per-room
+deletes, and reported client shutdown); voice CI now runs
+`backend/tests`. `max_retry=0` alone is NOT a no-reconnect guarantee —
+the pinned SDK reconnects an established session in a tight loop without
+consulting it — so `backend/voice_connection_guard.py` caps the trial
+session at one connection and must be re-verified on any SDK upgrade.
+Mobile suites untouched this pass (96/96 remains the 2026-09-27
+historical count).
 LiveKit (`livekit-agents==1.2.12` imports on Python 3.13) is absent from
 `backend/requirements.txt` / `backend/requirements.lock` (foundation-only);
 it is pinned separately in `backend/requirements-voice-dev.txt` /
@@ -90,12 +157,18 @@ installed in `backend/.venv` only.
 
 ## LiveKit free-plan testing gate
 
-The `call_app` LiveKit Cloud project is on the free Build plan (read-only
-dashboard check 2026-09-25; details in `docs/HANDOFF.md`). At the owner's
-direction, pause all LiveKit experiments until the exact proposed run has
-verified plan/remaining allowance, worker and dispatch behavior, any
-external-provider cost, and a bounded stop/cleanup procedure. A 0% peak
-concurrency reading is not proof of unused monthly allowance or zero cost.
+The `call_app` LiveKit Cloud project was last confirmed on the free Build
+plan by a read-only dashboard check on 2026-09-25. The latest audit and
+cleanup procedure are in `docs/HANDOFF.md` under **LiveKit quick reference
+— read-only audit 2026-09-28**; reuse its static findings without repeating
+dashboard visits. Its credential-availability note predates local key
+provisioning. Refresh volatile allowance, credential/billing tier, and
+worker-registration state only before a separately authorized run. At the
+owner's direction, pause all LiveKit experiments until the exact proposed
+run has a verified plan and remaining allowance, known worker/dispatch
+behavior and external-provider cost, and a bounded stop/cleanup procedure.
+A 0% peak concurrency reading is not proof of unused monthly allowance or
+zero cost.
 For a mic-only trial, prove that the Start path cannot dispatch an agent;
 an empty Agents page or omission of `agentName` alone is insufficient
 (unnamed LiveKit workers auto-dispatch). This gate follows the owner's
@@ -103,6 +176,40 @@ instruction and Prototype Specification v1.0.1 sections 7.1 and 8.
 If any part is uncertain, keep work offline. Each live connection still
 needs the owner's separate explicit approval; no automatic retries, agent
 deployments, or plan changes.
+
+Treat every connected SDK participant as metered, even with no published
+audio. The 2026-09-28 audit found two overlapping September 24
+`voice-spike` sessions totaling 176 participant minutes; the 143-minute
+session had no publisher row. Opening Home or Audio Test without Start is
+not a connection. Do not infer room closure from an ended screen, muted
+microphone, phone watchdog, worker deadline, or an empty Publishers table.
+The 179-minute project usage snapshot is not an account-wide remaining
+balance; Build allowances are monthly and shared across free projects.
+
+Before proposing a live trial, document one exact Start, its proposed
+maximum duration, a human-operated stop timer, expected worker/dispatch,
+Google billing exposure, and the fallback room-deletion procedure. Check
+the current plan, current-month usage and reliable shared-allowance
+headroom, active rooms/participants, and named *and unnamed* worker state.
+For paid provider testing, document an explicit currency ceiling and a
+way to stop further admission as required by Specification v1.0.1 §8.
+If sufficient headroom or any other preflight fact cannot be established,
+do not connect to find out. Record owner approval for that specific run
+after presenting the preflight; approval for a completed or different run
+does not authorize another connection.
+Do not start a worker, fetch a live token, press Start, or create a room
+while this gate is blocked.
+
+For an approved run, allow one Start only and no retry. End within the
+approved duration rather than relying on the 90-second phone watchdog or
+120-second worker deadline as a hard cost cap. After End, verify the phone
+mic indicator is off **and** LiveKit reports the session CLOSED, the
+participant gone, and no agent/room still active; compare usage before
+and after. If closure or mic release cannot be confirmed, execute the
+approved cleanup procedure, stop further trials, and report the unresolved
+state. This implements the spend-control gate in Prototype Specification
+v1.0.1 §8; no live test may be treated as free merely because Build has
+no overage charges.
 
 ## Reporting requirements
 

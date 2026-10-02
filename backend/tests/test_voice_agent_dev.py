@@ -63,11 +63,23 @@ def _install_google_realtime_stub(monkeypatch, captured):
     1.2.9 RealtimeModel signature acceptance is verified separately
     against the installed wheel (see pinned-instructions test) — server
     acceptance still needs the live trial.
+
+    Importing the real package also REGISTERS the plugin, which is what
+    admits a job, so the stub registers a stand-in too. Without this the
+    prerequisite gate would (correctly) refuse: an importable namespace
+    with nothing registered is the poisoned-cache state.
     """
 
     class FakeRealtimeModel:
         def __init__(self, **kwargs):
             captured.update(kwargs)
+
+        def session(self):
+            # A real RealtimeModel has this factory (the dev worker
+            # wraps it with the connection guard). Nothing here should
+            # ask the stub for a provider session: AgentSession is
+            # faked in these tests.
+            raise AssertionError("stub model must not create a provider session")
 
     realtime_mod = types.ModuleType("livekit.plugins.google.beta.realtime")
     realtime_mod.RealtimeModel = FakeRealtimeModel
@@ -81,6 +93,22 @@ def _install_google_realtime_stub(monkeypatch, captured):
     ):
         if name not in sys.modules or sys.modules[name] is None:
             monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
+    _register_stub_google_plugin(monkeypatch)
+
+
+def _register_stub_google_plugin(monkeypatch):
+    """Mirror the registration a real `import livekit.plugins.google` performs."""
+    from livekit.agents import Plugin
+
+    class _StubGooglePlugin(Plugin):
+        def __init__(self):
+            super().__init__("Google (stub)", "0", "livekit.plugins.google")
+
+    monkeypatch.setattr(
+        Plugin,
+        "registered_plugins",
+        [*Plugin.registered_plugins, _StubGooglePlugin()],
+    )
 
 
 def test_realtime_model_reports_missing_key_without_value(monkeypatch):
@@ -183,7 +211,11 @@ def test_worker_is_named_explicit_dispatch_only():
 
 
 def test_source_contains_no_recording_or_upload_wiring():
-    source = pathlib.Path(voice_agent_dev.__file__).read_text(encoding="utf-8")
+    directory = pathlib.Path(voice_agent_dev.__file__).parent
+    source = "\n".join((directory / name).read_text(encoding="utf-8") for name in (
+        "voice_agent_dev.py", "voice_trial_config.py", "voice_trial_cleanup.py",
+        "voice_trial_lifecycle.py",
+    ))
     for banned in (
         "egress",
         "Egress",
