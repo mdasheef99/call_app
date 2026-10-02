@@ -9,8 +9,8 @@ duck-typed room API the core expects. Run it BEFORE tapping Start:
 
 Credentials come from the trial-shell environment only — names are
 listed when one is missing, values are never printed and no credential
-file is read. The worker log is re-read on every poll, so a room
-dispatched after monitoring was armed is adopted with its own cutoff.
+file is read. Only dispatches appended after arming are adopted. Keep
+the worker log append-only; replacement/truncation stops the guard.
 
 The summary states, per owned room, whether closure came from the
 worker's own cleanup (``natural``) or after the guard's fallback cutoff
@@ -90,14 +90,23 @@ def build_client():
     )
 
 
-def read_owned_rooms(log_path: str, agent_name: str) -> set[str]:
-    """Owned room names from the worker log, re-read on every poll.
+def read_owned_rooms(log_path: str, agent_name: str, *, start_offset: int = 0,
+                     log_identity: tuple[int, int] | None = None,
+                     minimum_size: int = 0) -> set[str]:
+    """Read post-arming dispatches from the same append-only worker log.
 
     A log that does not exist yet (monitoring armed before Start) or
     cannot be read yields no ownership yet rather than failing the run.
     """
     try:
-        text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+        with Path(log_path).open("rb") as source:
+            current = os.fstat(source.fileno())
+            if log_identity is not None and (current.st_dev, current.st_ino) != log_identity:
+                raise RuntimeError("worker log replaced; stop this trial")
+            if current.st_size < max(start_offset, minimum_size):
+                raise RuntimeError("worker log truncated; stop this trial")
+            source.seek(start_offset)
+            text = source.read().decode("utf-8", errors="replace")
     except OSError:
         return set()
     return owned_rooms_from_dispatch_log(text, agent_name)
@@ -121,6 +130,29 @@ async def run_guard(
     still says only what listings observed. No hard wall-clock
     guarantee is claimed against SDK code that never yields.
     """
+    # SDD §8: pre-existing dispatches never grant this trial deletion rights.
+    try:
+        initial = Path(log_path).stat()
+    except FileNotFoundError:
+        start_offset, log_identity = 0, None
+    else:
+        start_offset = initial.st_size
+        log_identity = (initial.st_dev, initial.st_ino)
+    last_size = start_offset
+
+    def discover_owned():
+        nonlocal log_identity, last_size
+        try:
+            current = Path(log_path).stat()
+        except OSError:
+            return set()
+        if log_identity is None:
+            log_identity = (current.st_dev, current.st_ino)
+        rooms = read_owned_rooms(log_path, agent_name, start_offset=start_offset,
+                                 log_identity=log_identity, minimum_size=last_size)
+        last_size = max(last_size, current.st_size)
+        return rooms
+
     adapter = LiveKitRoomApi(client if client is not None else build_client())
     guard = CutoffGuard(set(), cutoff_s=cutoff_s, api_timeout_s=api_timeout_s)
     try:
@@ -128,7 +160,7 @@ async def run_guard(
             adapter,
             poll_s=poll_s,
             wait_s=wait_s,
-            discover_owned=lambda: read_owned_rooms(log_path, agent_name),
+            discover_owned=discover_owned,
         )
     finally:
         summary_close = await _close_client(adapter, api_timeout_s)

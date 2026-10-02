@@ -203,9 +203,9 @@ allowance (see HANDOFF); no charge is implied by running offline tests.
 
 `backend/trial_cutoff_guard_run.py` arms the cutoff guard against the
 LiveKit SDK, so a trial room can be watched and, at the per-room
-cutoff, cleaned up. Run it **before** tapping Start; it re-reads the
-worker log every poll, so a room dispatched later is adopted with its
-own cutoff:
+cutoff, cleaned up. Run it **before** tapping Start; it snapshots the
+worker log's byte offset and adopts only dispatch records appended after
+arming. Earlier records cannot authorize deletion for this trial:
 
 ```powershell
 # LIVEKIT_* must be in the trial shell, never on the command line
@@ -213,7 +213,10 @@ own cutoff:
 ```
 
 Ownership comes only from exact dispatch records for the named worker,
-so other rooms are reported and never deleted. Closure is reported only
+so other rooms are reported and never deleted. Keep this log append-only
+while armed. A changed file identity or an observed decrease in size
+stops the guard; stop the trial and use its approved exact-room cleanup.
+Closure is reported only
 from a successful room listing — a failed or timed-out request proves
 nothing — and the summary says whether a room closed on its own (worker
 cleanup) or after the guard's fallback cutoff delete. Every API call and

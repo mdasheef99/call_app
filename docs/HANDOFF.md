@@ -1,6 +1,32 @@
 # HANDOFF — Speech-driven conversation observed; Unmute unresolved; reviewed checkpoint for hosted CI
 
-Publication checkpoint 2026-10-02: independent Luna/max READ-ONLY review of the
+PR-depth correction checkpoint 2026-10-02 (SDD §§8/9/11/13, Spec P12/§6/§8):
+the complete review of PR #7 at `70a3b06` found two reproduced defects.
+Native SDK DEBUG error-close records bypassed privacy redaction; the cutoff
+driver could adopt historical dispatches from a reused log. The corrections
+now redact structured error extras while preserving original records/causes
+and legitimate dispatch metadata, and bind guard ownership to post-arming
+bytes of the same append-only log. Observed replacement/truncation stops
+the guard with client cleanup; the operator must stop the trial and execute
+its separately approved exact-room cleanup. No stop guarantee is inferred.
+
+RED: both SDK formatters leaked the canary, the driver deleted the historical
+room, and replacement/truncation went unreported. The initially empty-log
+truncation case also failed before its high-water check. GREEN: focused
+checks **18/18**; full backend **150 passed / 6 candidate-profile skips** in
+204.08 s, with the existing Starlette warning. Command: native Python `-B -m
+pytest -q -p no:cacheprovider backend/tests`, `PYTHONPATH=backend`, bytecode
+and plugin autoload disabled; conftest denies outbound before SDK imports.
+Production delta **42 added / 8 removed**; tests/helpers **143 added / 12
+removed**. Production modules are 137/218 lines. Whitespace checks passed;
+source `.pyc` count zero. Independent Luna/max READ-ONLY rereview found no
+blocking findings and passed its eight focused checks. Hosted CI must pass
+on the correction commit before merge. Browser UI, Android build and physical
+device: UNTESTED. Mobile, dependencies and secret files are untouched; no
+worker, live call, token, room or build was started. Cascade cleanup retry,
+Sarvam entitlement, Unmute and D6 remain separate open activation gates.
+
+Previous publication checkpoint 2026-10-02: independent Luna/max READ-ONLY review of the
 latest corrected boundaries returned **READY for checkpoint**, with no confirmed
 material blocker. The reviewer inspected source, pinned SDK and CI contracts;
 it did not rerun tests. Root reran native **142 passed / 6 candidate skips**,
@@ -11,7 +37,7 @@ corrections. Publication is for a draft PR and hosted checks, not a merge, new
 build or live trial. Hosted results belong to the PR checks; the local evidence
 and earlier uncommitted/no-push labels below describe their dated operations.
 
-Current offline checkpoint 2026-10-02 (SDD §§3/4/6/8/9/11/13): confirmed
+Earlier offline checkpoint 2026-10-02 (SDD §§3/4/6/8/9/11/13): confirmed
 review corrections are implemented in the reviewed publication checkpoint. The controlled cascade
 launcher reserves one named job for its lifetime and now refuses SDK environment
 overrides of registration/admission. An intentional protected admission record

@@ -29,6 +29,15 @@ DISPATCH_LINE = (
 )
 
 
+def _dispatch_on_first_poll(log):
+    """Simulate Start only after run_guard has armed its ownership boundary."""
+    def append(poll):
+        if poll == 0:
+            with log.open("a", encoding="utf-8") as output:
+                output.write(DISPATCH_LINE % "room-a")
+    return append
+
+
 @contextlib.contextmanager
 def _worker_log(text=""):
     """A temporary worker log, disposed of afterwards."""
@@ -79,6 +88,68 @@ class FakeLiveKitClient:
 
     async def aclose(self):
         self.closed = True
+
+
+@pytest.mark.parametrize("existing_log", [True, False])
+def test_driver_owns_only_dispatches_written_after_arming(monkeypatch, tmp_path, existing_log):
+    """SDD §8: a prior trial's active room is never this run's cleanup target."""
+    from .test_trial_cutoff_guard import FakeClock
+    clock, run = FakeClock(), guard_run.CutoffGuard.run
+
+    async def deterministic_run(self, api, **kwargs):
+        return await run(self, api, clock=clock, sleep=clock.sleep, **kwargs)
+
+    monkeypatch.setattr(guard_run.CutoffGuard, "run", deterministic_run)
+    log = tmp_path / "worker.out.log"
+    if existing_log:
+        log.write_text("old startup: हिन्दी\n" + DISPATCH_LINE % "prior-trial-room", encoding="utf-8")
+
+    def dispatch(poll):
+        if poll == 0:
+            with log.open("a", encoding="utf-8") as output:
+                output.write(DISPATCH_LINE % "current-trial-room")
+
+    client = FakeLiveKitClient([["prior-trial-room", "current-trial-room"]], on_poll=dispatch)
+    summary = asyncio.run(guard_run.run_guard(
+        log_path=str(log), client=client, poll_s=1, cutoff_s=2, wait_s=5,
+    ))
+    assert client.room.deletes == ["current-trial-room"]
+    assert set(summary["owned"]) == {"current-trial-room"}
+    assert summary["unmatched"] == ["prior-trial-room"]
+    assert summary["all_owned_closed"] and summary["client_close"] == "ok"
+
+
+@pytest.mark.parametrize("change", ["replace", "truncate"])
+@pytest.mark.parametrize("existing_log", [True, False])
+def test_driver_rejects_log_replacement_or_truncation(monkeypatch, tmp_path, change, existing_log):
+    from .test_trial_cutoff_guard import FakeClock
+    clock, run = FakeClock(), guard_run.CutoffGuard.run
+
+    async def deterministic_run(self, api, **kwargs):
+        return await run(self, api, clock=clock, sleep=clock.sleep, **kwargs)
+
+    monkeypatch.setattr(guard_run.CutoffGuard, "run", deterministic_run)
+    log = tmp_path / "worker.out.log"
+    log.write_text(DISPATCH_LINE % "prior-trial-room" if existing_log else "", encoding="utf-8")
+
+    def alter_log(poll):
+        if poll == 0:
+            with log.open("a", encoding="utf-8") as output:
+                output.write(DISPATCH_LINE % "current-trial-room")
+        elif poll == 1:
+            if change == "replace":
+                replacement = tmp_path / "replacement.log"
+                replacement.write_text("reset\n", encoding="utf-8")
+                replacement.replace(log)
+            else:
+                log.write_text("reset\n", encoding="utf-8")
+
+    client = FakeLiveKitClient([["prior-trial-room", "current-trial-room"]], on_poll=alter_log)
+    with pytest.raises(RuntimeError, match="worker log.*stop.*trial"):
+        asyncio.run(guard_run.run_guard(
+            log_path=str(log), client=client, poll_s=1, cutoff_s=2, wait_s=5,
+        ))
+    assert client.closed and client.room.deletes == []
 
 
 def test_adapter_speaks_the_installed_sdk_types():
@@ -133,8 +204,9 @@ def test_driver_reports_worker_closure_separately_from_its_own_delete(monkeypatc
         return await run(self, api, clock=clock, sleep=clock.sleep, **kwargs)
 
     monkeypatch.setattr(guard_run.CutoffGuard, "run", deterministic_run)
-    with _worker_log(DISPATCH_LINE % "room-a") as log:
-        client = FakeLiveKitClient([[], ["room-a"], ["room-a"], []])
+    with _worker_log() as log:
+        client = FakeLiveKitClient([[], ["room-a"], ["room-a"], []],
+                                   on_poll=_dispatch_on_first_poll(log))
         summary = asyncio.run(
             guard_run.run_guard(
                 log_path=str(log),
@@ -151,14 +223,14 @@ def test_driver_reports_worker_closure_separately_from_its_own_delete(monkeypatc
 
 
 def test_driver_never_deletes_an_unmatched_room():
-    with _worker_log(DISPATCH_LINE % "room-a") as log:
+    with _worker_log() as log:
         client = FakeLiveKitClient(
             [
                 [],
                 ["room-a", "stranger"],
                 ["room-a", "stranger"],
                 ["room-a", "stranger"],
-            ]
+            ], on_poll=_dispatch_on_first_poll(log),
         )
         summary = asyncio.run(
             guard_run.run_guard(
@@ -209,11 +281,12 @@ def test_missing_credentials_are_named_never_valued(monkeypatch):
 
 
 def test_main_prints_summary_and_signals_unresolved_closure(capsys):
-    with _worker_log(DISPATCH_LINE % "room-a") as log:
+    with _worker_log() as log:
         # The room survives the cutoff delete and never closes: the run
         # must end unresolved and say so through the exit code, not a
         # success claim.
-        client = FakeLiveKitClient([["room-a"]], delete_behavior="keep")
+        client = FakeLiveKitClient([["room-a"]], delete_behavior="keep",
+                                   on_poll=_dispatch_on_first_poll(log))
         code = guard_run.main(
             [
                 "--log",
@@ -269,8 +342,9 @@ def test_failed_client_close_is_reported_not_swallowed():
         async def aclose(self):
             raise RuntimeError("close transport blew up")
 
-    with _worker_log(DISPATCH_LINE % "room-a") as log:
-        client = _FailingCloseClient([[], ["room-a"], []])
+    with _worker_log() as log:
+        client = _FailingCloseClient([[], ["room-a"], []],
+                                     on_poll=_dispatch_on_first_poll(log))
         summary = asyncio.run(
             guard_run.run_guard(
                 log_path=str(log),
@@ -295,7 +369,7 @@ def test_unclosed_client_fails_the_exit_code(capsys):
         async def aclose(self):
             raise RuntimeError("close transport blew up")
 
-    with _worker_log(DISPATCH_LINE % "room-a") as log:
+    with _worker_log() as log:
         code = guard_run.main(
             [
                 "--log",
@@ -307,7 +381,8 @@ def test_unclosed_client_fails_the_exit_code(capsys):
                 "--wait",
                 "2.0",
             ],
-            client=_FailingCloseClient([[], ["room-a"], []]),
+            client=_FailingCloseClient([[], ["room-a"], []],
+                                       on_poll=_dispatch_on_first_poll(log)),
         )
     summary = json.loads(capsys.readouterr().out)
     assert summary["all_owned_closed"] is True
@@ -315,8 +390,9 @@ def test_unclosed_client_fails_the_exit_code(capsys):
     assert code == 1
     # The positive case stays a success, so the condition is not simply
     # always non-zero.
-    with _worker_log(DISPATCH_LINE % "room-a") as log:
-        ok_client = FakeLiveKitClient([[], ["room-a"], []])
+    with _worker_log() as log:
+        ok_client = FakeLiveKitClient([[], ["room-a"], []],
+                                     on_poll=_dispatch_on_first_poll(log))
         ok_code = guard_run.main(
             [
                 "--log",

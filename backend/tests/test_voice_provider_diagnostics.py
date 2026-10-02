@@ -38,6 +38,61 @@ def test_native_sdk_redaction_preserves_original_records_and_cause_chain():
             assert "CANARY" not in str(records[0].__dict__)
             assert "RuntimeError" in records[0].getMessage()
 
+
+@pytest.mark.parametrize("format_type", ["ColoredFormatter", "JsonFormatter"])
+def test_real_sdk_error_close_redacts_debug_extras_on_both_streams(monkeypatch, format_type):
+    """P12/§6: a DEBUG close must not bypass redaction or lose dispatch metadata."""
+    import asyncio
+    import io
+    import voice_provider_diagnostics
+    from livekit.agents import AgentSession
+    from livekit.agents.cli import log as sdk_log
+    from livekit.agents.llm import RealtimeModelError
+    from trial_cutoff_guard import owned_rooms_from_dispatch_log
+
+    error, cause = RuntimeError("CANARY-close-error"), ValueError("CANARY-close-cause")
+    error.__cause__ = cause
+    failure = RealtimeModelError(timestamp=0, label="offline", error=error, recoverable=False)
+    originals, streams = [], [io.StringIO(), io.StringIO()]
+
+    def remember(record):
+        if getattr(record, "error", None) is failure:
+            originals.append((record, dict(record.__dict__)))
+        return True
+
+    logger = logging.getLogger("livekit.agents")
+    handlers = [logging.StreamHandler(stream) for stream in streams]
+    for handler in handlers:
+        handler.setFormatter(getattr(sdk_log, format_type)("%(message)s %(extra)s"))
+    monkeypatch.setattr(logger, "filters", [remember, *logger.filters])
+    monkeypatch.setattr(logger, "handlers", handlers)
+    monkeypatch.setattr(logger, "level", logging.DEBUG)
+    monkeypatch.setattr(logger, "propagate", False)
+    logger.info("received job request", extra={
+        "agent_name": "think-partner-dev", "room_name": "current-trial-room",
+    })
+
+    async def close_session():
+        session, closed = AgentSession(), []
+        # Exercise real error-close logging without a provider, RoomIO or server.
+        session._started = True
+        session.on("close", closed.append)
+        session._on_error(failure)
+        assert session._closing_task is not None
+        await asyncio.wait_for(session._closing_task, 2)
+        assert not session._started and closed[0].error is failure
+
+    asyncio.run(close_session())
+    for stream in streams:
+        rendered = stream.getvalue()
+        assert "CANARY" not in rendered, "SDK DEBUG close exposed exception content"
+        assert "Traceback (most recent call last)" not in rendered
+        assert "RuntimeError" in rendered
+        assert owned_rooms_from_dispatch_log(rendered, "think-partner-dev") == {"current-trial-room"}
+    assert originals, "real SDK close record was not exercised"
+    assert all(record.__dict__ == saved for record, saved in originals)
+    assert failure.error is error and error.__cause__ is cause
+
 _PROBE = r"""
 import logging, socket
 from livekit import rtc

@@ -14,11 +14,13 @@ class _GoogleLogPrivacy(logging.Filter):
     """P12/§6: replace native SDK error records before handlers format them."""
 
     def filter(self, record):
+        error = record.exc_info[1] if record.exc_info else getattr(record, "error", None)
         if record.levelno < logging.WARNING and not (
-            record.exc_info or record.exc_text or record.stack_info
+            record.exc_info or record.exc_text or record.stack_info or error is not None
         ):
             return True
-        error = record.exc_info[1] if record.exc_info else None
+        # AgentSession DEBUG close records carry the failure in extra.error.
+        error = getattr(error, "error", error)
         safe = logging.LogRecord(
             record.name, record.levelno, record.pathname, record.lineno,
             "google_sdk_event event=%s:%s error_type=%s",
